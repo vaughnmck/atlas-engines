@@ -1,0 +1,1107 @@
+<meta name="robots" content="noindex, nofollow">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Atlas: Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,300;6..72,400&display=swap">
+<style>
+/* ---------------------------------------------------------------------------
+   Atlas "Foundry" skin. Every colour below is lifted from design/atlas.html, the
+   live board renderer, which is the system in practice. atlas.html is a LIGHT
+   surface only, so the light theme here is Atlas verbatim and the dark theme is
+   the same palette read the other way round: Atlas's own darks (#0b0f15 #13171f
+   #1A212C #242A35 #313945) become the grounds, and Atlas's own lights (#EDF1F6
+   #AFB7C4 #8A93A3 #5B6474) become the ink. No colour is invented for the dark
+   theme that Atlas does not already ship.
+
+   THE PAGE IS A CHART, NOT A LIST. One grid template (.g) governs the sticky
+   column header, every row, and the gridline overlay, so the figure sits hard
+   against the origin of its own bar and the axis ticks fall on hairlines that
+   run the full height of the ranking. Nothing is centred, nothing is carded,
+   nothing lifts off the ground except the mobile filter drawer. Depth is
+   borders only.
+
+   COLOUR IS SPENT ON EXACTLY TWO AXES AND NOWHERE ELSE.
+     --sol / --hard / --str  the wall: what it costs to reach. The bar takes its
+                             colour from the wall and the wall chip leads the
+                             meta line in the same colour, so chip and bar bind.
+     --warn                  growth that is NOT growing. Held out of the wall
+                             ramp deliberately so the two never read as one axis.
+   Everything else, competition and the taxonomy pair and the PM volume, is an
+   ordinal luminance ramp on ink, which is how Atlas draws an ordinal (VC2).
+   Competition USED to reuse --sol/--hard/--str; two axes wearing one ramp on the
+   same line is a miscue, so it now rides ink weight and luminance instead.
+   --------------------------------------------------------------------------- */
+:root{--bg:#0b0f15;--card:#13171f;--card2:#1A212C;--line:#313945;--line2:#242A35;
+ --ink:#EDF1F6;--ink2:#AFB7C4;--ink3:#8A93A3;--ink4:#5B6474;
+ --acq:#D6FE51;--acqI:#0E1218;--beach:#97FCE4;--beachI:#0E1218;--mass:#2E5CFF;--massI:#FFFFFF;
+ --sol:#6FE0A6;--hard:#5EB2DE;--str:#8797D6;--accent:#EDF1F6;--warn:#F0A93B;
+ --acqT:#D6FE51;--beachT:#97FCE4;--massT:#8AA6FF;
+ --grid:rgba(237,241,246,.075);--grid0:rgba(237,241,246,.19);--tint:rgba(237,241,246,.035)}
+:root[data-theme="light"]{--bg:#d7dce4;--card:#FCFDFE;--card2:#E5EAF1;--line:#bcc3ce;--line2:#C8CED9;
+ --ink:#13171f;--ink2:#424A58;--ink3:#555E6E;--ink4:#7A8394;
+ --acq:#D6FE51;--acqI:#0E1218;--beach:#97FCE4;--beachI:#0E1218;--mass:#2E5CFF;--massI:#FFFFFF;
+ --sol:#0A6E48;--hard:#1A5A7C;--str:#2A3568;--accent:#0b0f15;--warn:#8A4F00;
+ --acqT:#55670A;--beachT:#0B6A78;--massT:#2A4FD8;
+ --grid:rgba(19,23,31,.085);--grid0:rgba(19,23,31,.22);--tint:rgba(252,253,254,.6)}
+@media(prefers-color-scheme:light){:root:not([data-theme="dark"]){
+ --bg:#d7dce4;--card:#FCFDFE;--card2:#E5EAF1;--line:#bcc3ce;--line2:#C8CED9;
+ --ink:#13171f;--ink2:#424A58;--ink3:#555E6E;--ink4:#7A8394;
+ --acq:#D6FE51;--acqI:#0E1218;--beach:#97FCE4;--beachI:#0E1218;--mass:#2E5CFF;--massI:#FFFFFF;
+ --sol:#0A6E48;--hard:#1A5A7C;--str:#2A3568;--accent:#0b0f15;--warn:#8A4F00;
+ --acqT:#55670A;--beachT:#0B6A78;--massT:#2A4FD8;
+ --grid:rgba(19,23,31,.085);--grid0:rgba(19,23,31,.22);--tint:rgba(252,253,254,.6)}}
+
+/* geometry — one place, because three elements must agree to the pixel */
+:root{--cRk:1.95rem;--cPm:5.35rem;--cFig:6.5rem;--gc:.75rem;--px:.2rem;
+ --rail:13.6rem;--railgap:2.4rem;--ctlh:8.1rem}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-padding-top:var(--ctlh);overflow-x:clip}
+body{background:var(--bg);color:var(--ink);margin:0;overflow-x:clip;
+ font-family:Archivo,-apple-system,BlinkMacSystemFont,sans-serif;font-size:16px;line-height:1.5}
+.wrap{max-width:79rem;margin:0 auto;padding:1.15rem .8rem 3.2rem}
+@media(min-width:640px){.wrap{padding:2rem 1.5rem 4.5rem}}
+/* Atlas has no monospace. Data is Newsreader; labels are Archivo with tabular figures. */
+.mono{font-family:Archivo,sans-serif;font-variant-numeric:tabular-nums}
+.dsp{font-family:Newsreader,Georgia,"Times New Roman",serif;font-weight:400;letter-spacing:-.01em}
+
+/* ---------------------------------------------------------------------------
+   FIGURES IN PROSE ARE NEWSREADER, NOT ARCHIVO.
+
+   The head comment above already states the system's rule: data is Newsreader,
+   labels are Archivo. The rule was only being applied to figures that sit in
+   their own column. But the row prose is dense with them - "1,265,650/day (2019)
+   to 3,882,506/day (2025) = +20.5%/yr" - and in Archivo those runs have the same
+   colour and rhythm as the words around them, so a reader scanning for a number
+   has to read the sentence to find it.
+
+   This applies the existing rule to numerals wherever they appear in prose. It
+   is one @font-face with a restricted unicode-range: digits, the marks that
+   travel with them, and the arrow. Everything else in the same paragraph still
+   resolves to Archivo, because the range does not match it.
+
+   Newsreader is already loaded for the figure columns, so this adds no request
+   beyond the one the page was making anyway. If the URL ever 404s the range
+   simply falls through to Archivo and the page reads as it did before.
+   --------------------------------------------------------------------------- */
+@font-face{font-family:"Figs";font-style:normal;font-weight:400;font-display:swap;
+ src:url(https://fonts.gstatic.com/s/newsreader/v26/cY9VfjOCX1hbuyalUrK49dLafXjalZCsZBsgBgbNJYQ5ayZC.woff2) format("woff2");
+ unicode-range:U+0030-0039,U+0024,U+0025,U+002B,U+002C,U+002E,U+002F,U+00A3,U+00A5,U+2212,U+2013,U+2192,U+00D7}
+/* Prose only. The figure columns are already Newsreader outright, and the
+   uppercase micro-labels keep Archivo's tabular figures so columns still align. */
+.sub,.key,.cap,.blk,.bd,.reads p,.bq,.nt,footer p,.c-meta{
+ font-family:"Figs",Archivo,-apple-system,BlinkMacSystemFont,sans-serif}
+
+/* ---- masthead: headline and deck sit on one rule, both bottom-aligned to it,
+        so the wide screen is spanned by the masthead instead of abandoned ---- */
+.mast{border-bottom:1px solid var(--line);padding-bottom:1.05rem}
+@media(min-width:900px){.mast{display:grid;grid-template-columns:minmax(0,.82fr) minmax(0,1.18fr);
+ gap:0 var(--railgap);align-items:end}}
+h1{font-family:Newsreader,Georgia,serif;font-weight:400;
+ font-size:clamp(1.7rem,5.7vw,4.15rem);line-height:1;letter-spacing:-.022em;margin:0}
+.sub{color:var(--ink2);font-size:.82rem;line-height:1.48;margin:.65rem 0 0;max-width:52ch;
+ text-align:justify;hyphens:auto}
+@media(min-width:900px){.sub{margin:0 0 .3rem;font-size:.82rem;line-height:1.44;max-width:none}}
+.sub b{color:var(--ink);font-weight:600}
+
+/* ---- the two-column body: filters live in a rail, the ranking gets the width ---- */
+.body{display:grid;margin-top:1.05rem;grid-template-columns:minmax(0,1fr);
+ grid-template-areas:"ctl" "pan" "list" "cap"}
+@media(max-width:639px){
+ .cap{margin:1.1rem 0 0;padding-top:.8rem;border-top:1px solid var(--line2)}
+ .cnt .cw{display:none}.slab{display:none}}
+@media(min-width:640px){.cap{display:none}}
+@media(min-width:1180px){.body{position:relative;grid-template-columns:var(--rail) minmax(0,1fr);
+ column-gap:var(--railgap);
+ grid-template-areas:"ctl ctl" "pan list" "pan .";align-items:start}
+ .ctl>.bar,.ctl>.key,.ctl>.head{margin-left:calc(var(--rail) + var(--railgap))}
+ /* the rail divider runs the whole ranking, not just as far as the last chip */
+ .body::before{content:"";position:absolute;top:var(--ctlh);bottom:0;width:1px;
+  background:var(--line2);left:calc(var(--rail) + var(--railgap)/2 - .5px)}}
+
+/* ---- the sticky head: sort line, then the column header and the axis.
+        It is sticky because an axis that leaves the bars is not an axis. ---- */
+.ctl{grid-area:ctl;position:sticky;top:0;z-index:6;background:var(--bg);
+ border-bottom:1px solid var(--line);margin:0 -.8rem;padding:0 .8rem}
+@media(min-width:640px){.ctl{margin:0;padding:0}}
+.ctl::before,.ctl::after{content:"";position:absolute;top:0;bottom:0;width:100vw;
+ background:var(--bg);border-bottom:1px solid var(--line);z-index:-1}
+.ctl::before{right:100%}
+.ctl::after{left:100%}
+.bar{display:flex;align-items:center;gap:.45rem;min-height:3rem}
+.tg{font-size:.63rem;letter-spacing:.09em;text-transform:uppercase;
+ font-weight:600;color:var(--ink2);background:none;border:1px solid var(--line);border-radius:3px;
+ padding:0 .7rem;min-height:2.4rem;cursor:pointer;flex:none}
+.tg[aria-expanded="true"],.tg.act{color:var(--ink);border-color:var(--ink3)}
+.cnt{font-size:.63rem;letter-spacing:.05em;color:var(--ink3);margin:0 0 0 auto;flex:none;
+ white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right}
+.cnt b{color:var(--ink2);font-weight:600}
+.slab{font-size:.56rem;letter-spacing:.13em;text-transform:uppercase;font-weight:600;
+ color:var(--ink3);flex:none}
+.sortw{position:relative;flex:0 1 15.6rem;min-width:0;display:flex}
+.sortw::after{content:"";position:absolute;right:.6rem;top:50%;width:.36rem;height:.36rem;
+ margin-top:-.28rem;border-right:1.5px solid var(--ink3);border-bottom:1.5px solid var(--ink3);
+ transform:rotate(45deg);pointer-events:none}
+select{font-family:inherit;font-size:.85rem;letter-spacing:-.005em;font-weight:600;
+ padding:0 1.75rem 0 .6rem;border-radius:3px;-webkit-appearance:none;appearance:none;
+ border:1px solid var(--line);background:none;color:var(--ink);cursor:pointer;
+ min-height:2.4rem;width:100%;text-overflow:ellipsis}
+@media(hover:hover){select:hover{border-color:var(--ink3)}}
+
+/* the column header. .g is the shared template — see the .g block below. */
+.head{padding-bottom:.42rem;align-items:end}
+.key{font-size:.665rem;color:var(--ink3);line-height:1.5;margin:0 0 .55rem;
+ padding:0 var(--px);max-width:92ch}
+.key b{color:var(--ink2);font-weight:600}
+.key i{font-style:normal;color:var(--ink4)}
+/* the phone reads the same sentence from .cap, at the foot of the ranking. In the
+   sticky head it would be four lines standing between the reader and the first row,
+   which is the one thing the phone layout exists to prevent. */
+@media(max-width:639px){.key{display:none}}
+.hmet{grid-area:met}.hpm{grid-area:pm}.hfig{grid-area:fig}.ruler{grid-area:bar}
+.hmet{font-size:.55rem;letter-spacing:.115em;text-transform:uppercase;
+ font-weight:600;color:var(--ink2);line-height:1.25;align-self:end}
+.hpm i{display:block;font-style:normal;letter-spacing:.012em;text-transform:none;
+ font-weight:500;color:var(--ink4);font-size:1.08em;margin-top:.12rem;white-space:nowrap}
+.hpm,.hfig{font-size:.5rem;letter-spacing:.1em;text-transform:uppercase;font-weight:600;
+ color:var(--ink4);text-align:right;line-height:1.25;align-self:end}
+.ruler{position:relative;height:1.15rem;align-self:end;min-width:0}
+.at{position:absolute;bottom:-.42rem;width:1px;height:.3rem;background:var(--ink4)}
+.tk{position:absolute;bottom:.1rem;transform:translateX(-50%);white-space:nowrap;
+ font-size:.55rem;letter-spacing:.03em;color:var(--ink3);font-variant-numeric:tabular-nums;
+ font-weight:500}
+.tk.l0{transform:none}.tk.lN{transform:translateX(-100%)}
+
+/* ---- filter rail (wide) / filter drawer (narrow) ---- */
+.pan{grid-area:pan;display:none;margin:0 -.8rem;padding:.55rem .8rem .8rem;
+ border-bottom:1px solid var(--line);position:relative;z-index:5}
+.pan.open{display:block;background:var(--card2);
+ box-shadow:0 1px 2px rgba(0,0,0,.04),0 10px 30px rgba(0,0,0,.07)}
+@media(min-width:640px){.pan{margin:0;padding:.55rem 0 .8rem}}
+@media(min-width:1180px){
+ .tg{display:none}
+ .pan{display:block;background:none;box-shadow:none;border-bottom:0;
+  padding:1.02rem var(--railgap) 2rem 0;margin:0;position:sticky;
+  top:calc(var(--ctlh) + .5rem)}
+ .pan.open{background:none;box-shadow:none}}
+.grp{display:flex;gap:.28rem;flex-wrap:wrap;align-items:center;margin:.3rem 0}
+.lab{font-size:.53rem;letter-spacing:.12em;text-transform:uppercase;font-weight:600;
+ color:var(--ink4);flex:none;width:3.2rem}
+@media(min-width:1180px){
+ .grp{display:block;margin:0 0 1rem}
+ .lab{display:block;width:auto;margin:0 0 .34rem;padding-bottom:.26rem;
+  border-bottom:1px solid var(--line2);color:var(--ink3)}
+ .f{margin:0 .22rem .22rem 0}}
+/* Atlas chip: 3px, hairline edge, inverts to the ink plate when active. */
+.f{font-size:.6rem;letter-spacing:.055em;text-transform:uppercase;
+ padding:0 .5rem;min-height:1.95rem;border-radius:3px;border:1px solid var(--line);background:none;
+ color:var(--ink2);cursor:pointer;font-weight:600;font-family:inherit}
+.f.on{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+/* The three engines are a CATEGORICAL identity, which Atlas draws with its saturated
+   swatch set (the YOU= venue grid: brand fill, hairline edge, label colour chosen by
+   contrast ratio rather than a luminance cutoff). They are not venue claims, this
+   page has no venue axis, and they appear ONLY here, on the control that selects
+   them, never on a row, so they cannot be mistaken for the wall ramp. */
+.f.acq.on{background:var(--acq);border-color:var(--acq);color:var(--acqI)}
+.f.beach.on{background:var(--beach);border-color:var(--beach);color:var(--beachI)}
+.f.mass.on{background:var(--mass);border-color:var(--mass);color:var(--massI)}
+#clear{border-color:transparent;color:var(--ink4);padding-left:0;font-weight:500;
+ text-transform:none;letter-spacing:.02em;font-size:.68rem}
+@media(hover:hover){#clear:hover{color:var(--ink2);border-color:transparent;
+ text-decoration:underline;text-underline-offset:2px}}
+.f:focus-visible,.tg:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(hover:hover){.f:hover,.tg:hover{border-color:var(--ink3)}}
+
+/* .cap and .pan are the two columns of one grid row. Their top padding is
+   matched so the rail's first label and the first line of the caption sit on
+   the same line rather than a rem apart. */
+.cap{grid-area:cap;font-size:.71rem;color:var(--ink3);line-height:1.55;
+ margin:0;padding:0 var(--px)}
+.cap b{color:var(--ink2);font-weight:600}
+.cap i{font-style:normal;color:var(--ink4)}
+
+/* =========================================================================
+   THE GRID. Header, every row and the gridline overlay all use .g, which is
+   why a figure sits on the origin of its own bar and the ticks are real.
+   ========================================================================= */
+.g{display:grid;column-gap:var(--gc);padding:0 var(--px);
+ grid-template-columns:var(--cRk) minmax(0,1.24fr) var(--cPm) var(--cFig) minmax(6.5rem,1.06fr);
+ grid-template-areas:"rk nm pm fig bar" "rk meta meta meta ."}
+@media(max-width:899px){
+ .g{--gc:.5rem;grid-template-columns:var(--cRk) 5.2rem minmax(0,1fr);
+  grid-template-areas:"rk nm nm" "rk fig bar" "rk pm bar" "rk meta meta"}}
+
+/* declared after .g on purpose: the header row is one row, not two */
+.g.head{grid-template-areas:"met met pm fig bar"}
+@media(max-width:899px){.g.head{grid-template-areas:"met met met" "x fig bar"}.hpm{display:none}}
+
+/* ---- the list, and the gridlines that descend from the axis ---- */
+#list{grid-area:list;position:relative}
+.glines{position:absolute;inset:0;pointer-events:none;z-index:0;
+ grid-template-areas:"rk nm pm fig bar";grid-template-rows:100%}
+.glines .gl{grid-area:bar;position:relative;height:100%}
+.glines .gl i{position:absolute;top:0;bottom:0;width:1px;background:var(--grid)}
+.glines .gl i.o{background:var(--grid0)}
+@media(max-width:899px){.glines{display:none}}
+
+/* ---- a row ---- */
+.r{border-bottom:1px solid var(--line2);position:relative;z-index:1}
+
+.hd{display:block;width:100%;text-align:left;background:none;border:0;color:inherit;
+ font-family:inherit;padding:.44rem 0 .48rem;cursor:pointer}
+.hd:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+@media(hover:hover){.hd:hover{background:var(--tint)}}
+
+.c-rk{grid-area:rk;font-size:.62rem;font-weight:600;letter-spacing:.06em;color:var(--ink4);
+ font-variant-numeric:tabular-nums;line-height:1.5rem}
+.c-nm{grid-area:nm;min-width:0;font-size:.9rem;line-height:1.5rem;padding-right:.5rem}
+.ad{font-style:normal;font-size:.94em;font-weight:600;color:var(--ink2);
+ padding-right:.34rem}
+/* Atlas titles a thing in Newsreader and qualifies it in Archivo — the dossier
+   header (dTitle) and the tooltip (ttName) both do exactly this. */
+.c-nm b{display:block;font-family:Newsreader,Georgia,serif;font-weight:400;font-size:1.11em;
+ letter-spacing:-.012em;color:var(--ink);line-height:1.5rem;text-wrap:pretty}
+.c-nm>span:not(.cv){display:block;font-weight:400;color:var(--ink3);font-size:.9em;
+ line-height:1.28;margin-top:.02rem;text-wrap:pretty}
+
+/* The two figures. The primary is right-aligned hard against the bar origin with
+   nothing between them; the PM volume sits one column further left, labelled once
+   in the sticky header instead of nineteen times down the page. */
+.c-pm{grid-area:pm;text-align:right;font-family:Newsreader,Georgia,serif;font-weight:400;
+ letter-spacing:-.01em;font-variant-numeric:tabular-nums;font-size:.8rem;color:var(--ink3);
+ line-height:1.5rem;white-space:nowrap}
+.c-pm em{font-style:normal;color:var(--ink4);padding:0 .12rem}
+.c-pm .z{color:var(--ink4)}
+.c-fig{grid-area:fig;text-align:right;font-family:Newsreader,Georgia,serif;font-weight:400;
+ letter-spacing:-.012em;font-variant-numeric:tabular-nums;font-size:1.12rem;color:var(--ink);
+ line-height:1.5rem;white-space:nowrap}
+.c-fig.n{color:var(--ink4)}
+.c-fig u{display:block;text-decoration:none;font-family:Archivo,sans-serif;font-size:.5rem;
+ letter-spacing:.08em;text-transform:uppercase;color:var(--ink4);line-height:.85rem;
+ margin-top:-.2rem}
+
+/* One mark per row. Length = whichever money quantity is being sorted on.
+   Colour = the wall, i.e. what it costs to reach. The right 4% holds the
+   testable-now tick, which is why the axis stops at 96% of the track. */
+.c-bar{grid-area:bar;position:relative;height:1.5rem;min-width:0}
+@media(max-width:899px){.c-bar{align-self:center;height:100%}}
+.dbar{position:absolute;left:0;top:50%;height:8px;margin-top:-4px;border-radius:1px;min-width:2px}
+.dbar.sol{background:var(--sol)}.dbar.hd2{background:var(--hard)}.dbar.str{background:var(--str)}
+.tn{position:absolute;top:50%;height:15px;margin-top:-7.5px;width:0;margin-left:4px;
+ border-left:1.5px solid currentColor;opacity:.8}
+.tn.sol{color:var(--sol)}.tn.hd2{color:var(--hard)}.tn.str{color:var(--str)}
+.ns{position:absolute;left:.5rem;top:50%;transform:translateY(-50%);white-space:nowrap;
+ font-size:.55rem;letter-spacing:.09em;text-transform:uppercase;color:var(--ink4)}
+
+/* ---- the meta line, in two ranks.
+   LEADS (what it costs, which way it is moving, whether anyone is there):
+     wall — coloured to match this row's own bar, so chip and bar bind
+     growth — ink when growing, --warn when not, because a shrinking market is
+              the finding a reader most needs and dimming it would bury it
+     competition — an ordinal luminance ramp on ink: empty is brightest
+   TRAILS, pushed to the right margin and dimmed, because these two are what the
+   filter rail is for and nobody decides on them:
+     shape · engine
+   ---- */
+.c-meta{grid-area:meta;display:flex;flex-wrap:nowrap;align-items:baseline;gap:0 .6rem;
+ margin:.14rem 0 0;font-size:.665rem;line-height:1.45;color:var(--ink3);min-width:0}
+.mlead{flex:1 1 auto;min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;
+ gap:.1rem .34rem}
+.c-meta .mi{white-space:nowrap}
+/* The leads used to run together as one sentence: four phrases, no boundaries,
+   separated by whitespace alone. A dim interpunct makes each one a discrete
+   reading without adding a word to the line. */
+.c-meta .mi+.mi::before{content:"\00B7";color:var(--ink4);font-weight:400;
+ padding-right:.34rem}
+.c-meta .w{font-weight:600;letter-spacing:-.002em}
+.c-meta .w.sol{color:var(--sol)}.c-meta .w.hd2{color:var(--hard)}.c-meta .w.str{color:var(--str)}
+.c-meta .gw{font-weight:600;color:var(--ink)}
+.c-meta .gw.dn,.c-meta .gw.bk,.c-meta .gw.dd{color:var(--warn)}
+.c-meta .gw.flt{color:var(--ink3);font-weight:400}
+.cp{letter-spacing:-.002em}
+.cp.open{color:var(--ink);font-weight:600}
+.cp.dead{color:var(--ink2);font-weight:500}
+.cp.half{color:var(--ink3);font-weight:400}
+.cp.full{color:var(--ink4);font-weight:400}
+.c-meta .gp{color:var(--ink4)}
+.c-meta .gp.dn{color:var(--warn)}
+.c-meta .gp.up{color:var(--ink3)}
+.gy{font-style:normal;font-size:.8em;letter-spacing:.02em;padding-right:.18rem}
+/* The engine now carries its own filter colour on the row, at the operator's
+   request. The head comment above said these appear ONLY on the control that
+   selects them; that no longer holds, so the separation from the wall ramp is
+   now carried by position and treatment instead of by exclusivity - the wall
+   leads the line in sentence case at .665rem, the engine trails it past a rule
+   at .62rem. Text variants, not the plate fills, because those are made to
+   carry dark ink rather than to be ink. */
+.tax .en{font-weight:600}
+.tax .en.acq{color:var(--acqT)}
+.tax .en.beach{color:var(--beachT)}
+.tax .en.mass{color:var(--massT)}
+.tax{margin-left:auto;color:var(--ink4);font-size:.62rem;letter-spacing:.01em;white-space:nowrap;
+ padding-left:.6rem;border-left:1px solid var(--line2)}
+@media(max-width:899px){.tax{margin-left:0;padding-left:0;border-left:0}}
+
+.r.op{border-bottom:1px solid var(--line)}
+.r.op>.hd{background:var(--card2)}
+.det{display:none;padding:.85rem var(--px) 1.4rem;position:relative;z-index:1}
+.det.open{display:block;background:var(--card);border-top:1px solid var(--line)}
+@media(min-width:900px){.det{padding-left:calc(var(--cRk) + var(--gc))}
+ .det.open>.blk{max-width:84ch}}
+.blk{display:grid;grid-template-columns:minmax(0,1fr);gap:.24rem 1.35rem;
+ margin:0;padding:.72rem 0;border-top:1px solid var(--line2);
+ font-size:.82rem;color:var(--ink2);line-height:1.55}
+.blk:first-child{border-top:0;padding-top:.1rem}
+@media(min-width:760px){.blk{grid-template-columns:8.4rem minmax(0,1fr);gap:0 1.35rem}}
+.bd{min-width:0}
+.bd .tx{margin:0}
+.bd .tx+.reads{margin-top:.65rem}
+.lead{display:block;font-size:.6rem;font-weight:700;letter-spacing:.11em;text-transform:uppercase;
+ color:var(--ink2);margin:0;padding-top:.2rem;line-height:1.35}
+.lead .q{display:block;font-size:.62rem;font-weight:600;letter-spacing:.02em;
+ text-transform:none;color:var(--ink3);margin-top:.12rem;line-height:1.3}
+.lead .q.sol{color:var(--sol)}.lead .q.hd2{color:var(--hard)}.lead .q.str{color:var(--str)}
+.lead .q.open{color:var(--ink)}.lead .q.dead{color:var(--ink2)}
+.lead .q.half{color:var(--ink3)}.lead .q.full{color:var(--ink4)}
+.lead .q.up{color:var(--ink2)}
+.lead .q.dn,.lead .q.bk,.lead .q.dd{color:var(--warn)}
+.lead .q.flt,.lead .q.nn{color:var(--ink3)}
+.blk .mono{font-size:.96em}
+.reads{margin:0;padding:0;border:0;display:flex;flex-direction:column;gap:.62rem}
+.reads p{margin:0;font-size:.79rem;color:var(--ink2);line-height:1.5}
+.rl{display:flex;align-items:baseline;gap:.42rem;margin-bottom:.08rem}
+.rg{font-family:Newsreader,Georgia,serif;font-weight:400;letter-spacing:-.01em;
+ font-variant-numeric:tabular-nums;font-size:1rem;color:var(--ink)}
+.rg.n{color:var(--ink4)}
+.rg.gg{font-size:.86rem;letter-spacing:.01em}
+.rg.gg.dn,.rg.gg.bk,.rg.gg.dd{color:var(--warn)}
+.rt{font-size:.615rem;letter-spacing:.01em;text-transform:none;font-weight:500;color:var(--ink3)}
+.rt.bs{font-size:.52rem;letter-spacing:.09em;text-transform:uppercase;color:var(--ink4);
+ border:1px solid var(--line);border-radius:2px;padding:.03rem .24rem}
+.unit{font-family:Archivo,sans-serif;font-size:.58rem;font-weight:500;letter-spacing:.04em;
+ color:var(--ink4)}
+.bq{background:var(--card2);border:1px solid var(--line);border-radius:3px;
+ padding:.55rem .7rem;margin:0;font-size:.81rem;color:var(--ink2);line-height:1.55}
+.bq b{color:var(--ink)}
+.nt{margin:0;font-size:.77rem;color:var(--ink3);line-height:1.55}
+.nt b{color:var(--ink2)}
+
+/* ---- the apparatus. Long, and it should be: every claim on the page is
+        qualified down here. Set in columns at width so it reads as reference
+        rather than as one four-hundred-word ribbon. ---- */
+footer{margin-top:2.4rem;padding-top:1.1rem;border-top:1px solid var(--line);
+ font-size:.69rem;color:var(--ink3);line-height:1.62}
+footer p{margin:0 0 .8rem;break-inside:avoid;max-width:64ch}
+footer p:last-child{margin-bottom:0}
+footer b{color:var(--ink2)}
+@media(min-width:1000px){footer{columns:2;column-gap:var(--railgap)}}
+@media(min-width:1360px){footer{columns:3}}
+
+@media(prefers-reduced-motion:no-preference){
+ .hd{transition:background .14s ease}}
+/* =========================================================================
+   THE PHONE (<=639px). Not the wide chart squeezed down, the chart re-cut for
+   one hand, and the first layout in this sheet that was drawn at its own width
+   rather than inherited from the one above it.
+
+   Four bands, the same four on every row, so the ranking scans as a chart and
+   not as a feed of cards:
+
+     1  rank · product · figure      one baseline, so the eye reads across
+     2  who it is for                the qualifier, one line, clipped not wrapped
+     3  the bar, the full width      with the axis ticks descending through it
+     4  wall · growth · competition · pm volume · testable now
+
+   THE BAR TAKES THE WHOLE WIDTH because at 390px width IS the discrimination.
+   A bar confined to the right half of a 364px column has ~200px to separate
+   $2.43B from $2.35B, and separating them is the only reason the bar is there.
+   Moving the figure up onto the name line buys the bar the other 45%, and the
+   gridlines, switched off at this width before, can come back, because a
+   full-bleed bar has an origin and a ceiling worth marking.
+
+   THE META LINE NEVER WRAPS. It is one line, clipped at the right under a mask,
+   and its DOM order IS its priority: wall, growth, competition, PM's own volume,
+   testable now. When the line is too long the LAST chip loses its tail, never
+   the first, where a wrapped line used to collapse the whole ordering into an
+   undifferentiated block. Shape and engine leave the row entirely: they are
+   what the filter drawer selects, and nobody decides on them.
+
+   WHAT IS CUT FROM THE FACE IS IN THE OPENED ROW, which is what it is for. The
+   PM contract columns lose their own line here and keep both of their labelled
+   reads inside; the deck is clamped to two lines behind a control.
+   ========================================================================= */
+@media(max-width:639px){
+ :root{--cRk:1.55rem;--ctlh:4.9rem}
+ .wrap{padding:.85rem .8rem 2.6rem}
+
+ /* masthead — one line of title, two of deck, the rest one tap away */
+ .mast{padding-bottom:.7rem}
+  h1{font-size:clamp(1.95rem,9vw,2.95rem);line-height:1.03}
+ .sub{margin:.55rem 0 0;font-size:.8rem;line-height:1.46;text-align:left;hyphens:none}
+ /* the panel's labels carry the whole hierarchy at this width: there is no label
+    column here, only a label sitting over its own prose */
+ .blk{gap:.62rem 0;padding:.9rem 0}
+ .lead{display:flex;align-items:baseline;flex-wrap:wrap;gap:.15rem .55rem;
+  font-size:.665rem;letter-spacing:.1em;padding-top:0}
+ .lead .q{display:inline;margin:0;padding-left:.55rem;font-size:.72rem;
+  border-left:1px solid var(--line)}
+
+ /* the sticky head — thumb-sized controls, then the axis at full width */
+ .bar{min-height:2.95rem;gap:.4rem}
+ .tg,select{min-height:2.7rem}
+ .sortw{flex:1 1 auto}
+ .g.head{grid-template-columns:minmax(0,1fr) auto;column-gap:.6rem;row-gap:.08rem;
+  grid-template-areas:"met fig" "bar bar";padding-bottom:.3rem}
+ .ruler{height:1rem}
+ /* the drawer. Chips go to a 38px target, and the group label lifts out of the
+    flex flow so a wrapped chip aligns under the first one instead of falling
+    back to the left margin under its own label. */
+ .f{min-height:2.4rem;padding:0 .6rem}
+ .grp{position:relative;padding-left:3.7rem;margin:.34rem 0}
+ .grp:last-child{padding-left:0}
+ .lab{position:absolute;left:0;top:.68rem;width:auto}
+
+ /* the row */
+ .g{--gc:.5rem;row-gap:.05rem;
+  grid-template-columns:var(--cRk) minmax(0,1fr) auto;
+  grid-template-areas:"rk nm  fig"
+                      "rk aud fig"
+                      "bar bar bar"
+                      "meta meta meta"}
+ .hd{padding:.34rem 0 .4rem}
+ .c-rk{align-self:baseline;font-size:.6rem;line-height:1.2}
+ /* display:contents dissolves the name cell so its two halves can take their own
+    cells: the product titles the row, the audience qualifies it underneath, and
+    the caret stops being orphaned onto the end of whichever line wrapped last. */
+ .c-nm{display:contents;font-size:.8rem;line-height:1.3}
+ .c-nm b{grid-area:nm;align-self:baseline;min-width:0;font-size:1.18em;line-height:1.3;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .c-nm>span:not(.cv){grid-area:aud;display:block;min-width:0;font-size:.87em;
+  line-height:1.34;color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .c-pm{display:none}
+ /* fig spans BOTH title rows. On traded volume it carries a basis sub-label, and
+    in a one-row cell that label grew the row and opened a hole between the
+    product and the audience beneath it. Spanning parks the label beside the
+    audience instead, and every row stays the same height on every metric. */
+ .c-fig{grid-area:fig;align-self:start;font-size:1rem;line-height:1.3}
+ .c-fig u{line-height:.8rem;margin-top:-.02rem;font-size:.47rem}
+ .c-bar{grid-area:bar;align-self:center;height:.85rem}
+ .glines{display:grid;grid-template-columns:minmax(0,1fr);grid-template-areas:"bar";
+  grid-template-rows:100%}
+
+ .c-meta{flex-wrap:nowrap;overflow:hidden;gap:0 .44rem;margin:.1rem 0 0;
+  font-size:.625rem;line-height:1.42;
+  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 15px),transparent);
+  mask-image:linear-gradient(90deg,#000 calc(100% - 15px),transparent)}
+ .c-meta>*,.mlead>*{flex:none;white-space:nowrap}
+ .mlead{flex-wrap:nowrap;gap:0 .44rem}
+ /* the two that leave the face. The taxonomy pair is what the filter drawer
+    selects. Testable-now goes WITH ITS TICK: a mark on the bar whose chip is not
+    beside it is an unexplained glyph, and read at a glance the gap-then-stroke
+    says "the bar continues", which is the wrong sentence. It keeps the filter,
+    the sort, the bar's own aria-label, and it now names itself on the opened
+    row's Test block. */
+ .tax,.tn{display:none}
+
+ /* the opened row is a plate, Atlas's own panel fill, full bleed to the edges,
+    because on a phone an opened dossier owns the screen rather than sitting in
+    a column of it */
+ .det{padding:.7rem var(--px) 1.15rem}
+ footer{margin-top:1.6rem}
+}
+</style>
+<div class="wrap">
+<header class="mast">
+<div><h1>Atlas: Engine</h1></div>
+<div class="deckw"><p class="sub" id="deck">Ranked candidate expansions for the Polymarket catalogue. Each row names who it is for, what it would take to reach them, and what Polymarket already trades on that subject.</p></div>
+</header>
+<script>
+// 19 candidates · demand-thesis run 2026-08-21
+// pm    = Polymarket's own cash traded on the SUBJECT, any form. Same basis every row — the ONLY sortable number.
+// exact = PM cash traded on the PROPOSED product. Gap between pm and exact = audience here, product not.
+// rev   = addressable annual intermediary revenue (GGR / takeout / fees). null = not sourced; the row says what is missing.
+// native = the outside signal in ITS OWN unit. Shown, never sorted against another basis.
+const ROWS = [
+
+/* ══════ LIVE ══════ */
+
+{id:"P1",gd:"flat",gr:"+3.6% YoY, decelerating",grL:"CME rates ADV 10,349k/day (FY2019) &rarr; 14,203k/day (FY2025) = +5.4%/yr, contracts/day, futures+options. CME FY2025 10-K, filed 2026-02-26. The +11.5%/yr often quoted runs off a FY2021 base sitting in the ZIRP trough, and that start-year choice moves the answer six points. YoY 2025 is +3.6%, the slowest year of the recovery. The 10-Year Note contract itself ran 2,107k (FY2020) &rarr; 3,224k (FY2025) but fell 0.7% in 2025, its first decline in the series. LIBOR cessation in Q2 2023 took Eurodollar front-eight ADV from 1,100k to 87k, so contract-level series are not chainable across it.",gpd:"down",gp:"&minus;93% on the same product family. The 2025 10-year-yield ladder pair took 6,999,190 and closed 2025-12-31; the 2026 pair has taken 513,260 with roughly eight of twelve months elapsed. Pro-rating the open pair generously to a full year does not close the gap. PM publishes no per-market accrual series, so the direction is unambiguous and the exact rate isn't. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",gf:"",gt:"growing but decelerating, and PM&rsquo;s own volume on the subject is shrinking", vol:56600000000000, volL:"CME 10-Year note FUTURES ONLY ADV 2,253k &times; 251 &times; $100,000 face per ZN (CME spec)", volB:"face notional", rev2:390300000, rev2L:"809.2M contracts (futures+options) &times; $0.4823 rates RPC. ADV from the CME 10-K FY2025 interest-rate table; RPC derived volume-weighted from the four quarters CME publishes in its 8-K exh. 99.1 (2026-02-04); CME prints no annual RPC. The weighting reproduces the filer&#39;s own FY2025 totals: 7,060.5M contracts and $4,913.3M of fees against its printed 7,060.4M and $4,913.0M.", compS:"live-small", comp:"<b>LIVE.</b> <span class=\"mono\">para:10Y</span> on Paragon, a Hyperliquid HIP-3 builder DEX, since 2026-08-12, small but trading. <b>The 30-year version was listed and DELISTED.</b> Kalshi runs 10Y-yield event contracts. No CFD or spread-bet house offers a continuous retail instrument on the yield itself.", st:"live", n:"10-year yield perps &mdash; for macro-curious retail", eng:"beach", th:"Projection", shape:"cell",
+ pm:5898793, pmL:"&ldquo;How high will 10-year Treasury yield go in 2025?&rdquo;: the highest-volume macro subject on PM. Plus 1,477,146 above-5%-by-June, and two OPEN pre-2027 ladders. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",
+ exact:0, exactL:"no rates instrument among the 52 perps",
+ rev:null, revL:"DERIVABLE, NOT YET SOURCED. CME publishes product-level futures volume separately from options plus a rate-per-contract; rates revenue = contracts &times; RPC. Neither was pulled in this run.",
+ native:"14.2M contracts/day CME interest-rate ADV, FY2025 (50.5% of all CME volume)", nativeB:"contracts/day",
+ wall:"solvable", wallT:"Contract size and unit legibility. CME ZN is $100,000 face; a bp-quoted perp is $10.",
+ ev:"both", evT:"The only row where BOTH halves are independently sourced at scale: professional volume, and PM's own retail volume on the same subject.",
+ pop:"Existing perp users, plus retail already trading PM's Fed markets with no way to express a level",
+ test:"List offshore alongside the existing 52. No regulatory process to run the test.", now:true,
+ bridge:"CME rates volume is professional flow, not PM demand. What makes it addressable is PM's own volume on the same subject. Assumed: traders already buying that ladder would prefer a linear, expiry-free payoff to a strike-and-date bet.",
+ note:"The hedge is a DV01-matched ZN strip: 8.3M contracts/day, the most liquid futures contract on earth. Clears the continuous-spot test that kills VIX, mortgage and freight."},
+
+{id:"D3",gd:"flat",gr:"+2.5%/yr, window-dependent",grL:"UK remote BETTING GGY &pound;2.3bn (FY Apr2019&ndash;Mar2020) &rarr; &pound;2.6bn (FY Apr2024&ndash;Mar2025), gross gambling yield, GB-licensed operators. UKGC Industry Statistics, FY24/25 report pub 2025-11-25. Band +1.7% to +3.3%: UKGC publishes to &pound;0.1bn and rounding dominates a five-year CAGR. THE SIGN FLIPS WITH THE CLOCK: H2 Gambling Capital puts the same market at &pound;2.45bn for CY2025, DOWN 6% YoY on weak hold, with active players &minus;7%. The FY window caught the up-leg, the CY window the down-leg. Remote CASINO is a different line (&pound;5.0bn, +14.9%), and blending it into betting overstates betting growth by about 4pp/yr. Brazil is a genuine structural break with no pre-2025 series: H1 2025 R$17.4bn &rarr; H1 2026 R$20.07bn, +15.3%.",gpd:"down",gp:"&minus;60.1% on the row&rsquo;s own headline market. Premier League Winner took 808,665,619 across the 2024-25 season and 322,582,117 across 2025-26. Serie A Winner fell 90.4% over the same pair. Same field, same venue, same product, two consecutive seasons. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",gf:"H2 Gambling Capital, June 2026: UK online betting GGY &pound;2.45bn (2025) &rarr; &pound;2.52bn (2026, World Cup tailwind) &rarr; &pound;2.47bn (2027), as the World Cup effect reverses and remote betting duty rises to 25% on 2027-04-01. Net +0.8% over two years: H2 forecasts the duty rise roughly cancels underlying growth.",gt:"flat-to-slightly-up on the underlying market, shrinking on PM&rsquo;s own volume, and forecast flat-to-negative from Apr 2027", vol:null, volL:"Handle not published; the UK regulator publishes revenue directly, which is the better number.", volB:"—", rev2:3320000000, rev2L:"UK remote BETTING GGY &pound;2.6bn (UKGC industry statistics FY Apr 2024&ndash;Mar 2025) &times; 1.278. Published as operator revenue, with no hold assumption. <b>The composition favours this row:</b> UKGC breaks the &pound;2.6bn down as football &pound;1.3bn and horse racing &pound;766.7m, so football alone is half the pool, and exactly where Polymarket already runs its deepest book. <b>Two figures on that page must not be substituted for this one.</b> Non-remote betting GGY is &pound;2.5bn, +0.7%: that is betting shops, a different sector, printed two sentences away. And UKGC publishes turnover beside GGY on the same table, a far larger number that is handle rather than revenue. UK alone; other blocked jurisdictions not added.", compS:"live-small", comp:"<b>SOMEONE TOOK THE LICENCE ROUTE FIRST.</b> Matchbook Predictions launched UKGC-licensed in <b>January 2026</b> under Matchbook's existing licence. Betfair Exchange runs politics and specials in UK/IE/AU; Smarkets runs elections under UKGC plus Malta for the EU. Three of the eight target jurisdictions are legally unavailable regardless.", st:"live", n:"The whole catalogue &mdash; for licensed EU &amp; LatAm retail", eng:"beach", th:"Displaced", shape:"seg",
+ pm:808665619, pmL:"&ldquo;Premier League Winner&rdquo; all-time, generated with every English resident blocked. Live Brazilian S&eacute;rie A fixtures, with Brazil blocked.",
+ exact:0, exactL:"blocked: no access for these residents",
+ rev:3320000000, revL:"UK remote BETTING GGY <b>&pound;2.6B</b> (UKGC industry statistics, FY Apr 2024&ndash;Mar 2025) &times; 1.278 USD/GBP = <b>$3.32B/yr</b>. Published directly as operator revenue — no hold assumption, no manufactured handle. Brazil R$37bn GGR is a separate pool and is NOT added.",
+ native:"UK remote betting GGY £2.6B; 39 blocked countries + 4 Canadian provinces on PM's own list", nativeB:"GGR/yr",
+ wall:"solvable", wallT:"Licensing, not prohibition. Remote BETTING duty rises to 25% from Apr 2027. (The 40% figure widely quoted is remote GAMING duty and doesn't apply here.)",
+ ev:"one", evT:"Pool sourced as published operator revenue. The segment evidence is thinner than the headline number suggests; see the assumption.",
+ pop:"UK, Ireland, Germany, Italy, Netherlands, Brazil, Australia, NZ (licensed regimes PM has not applied to)",
+ test:"One jurisdiction, one licence application, cost-to-licence measured against that market's published GGR", now:false,
+ bridge:"The $808M Premier League book doesn't prove English demand. English residents were excluded from generating it, so it proves demand from everyone else. What it establishes is narrower: PM runs the exact product well. What carries the row is the licensed market's own published GGR.",
+ note:"The cheapest wall in the set: an application, not a law change."},
+
+{id:"E3",gd:"down",gr:"&minus;2.4%/yr over the decade",grL:"WTI ADV 1,442k/day (FY2017 peak) &rarr; 1,186k/day (FY2025), contracts/day, futures+options. CME FY2017 and FY2025 10-Ks. FY2025 sits 17.8% below the 2017 peak. Off the 2023 trough it is +2.3%/yr. Q1 2026 ran +69% YoY on Middle East supply disruption and Q2 gave most of it back at &minus;3%. Micro WTI hit 283k/day in Q2 2026, +209% YoY at a hundredth the contract size, so contract counts are increasingly not comparable across years; CME confirms it from the fee side. A notional series is NOT SOURCED.",gpd:"down",gp:"&minus;70.6% across the strip in three months. The monthly ladder ran April 60,617,334 &rarr; May 40,249,420 &rarr; June 8,584,559 &rarr; July 17,789,620, with August open at 8,522,145. Part of that fall is supply rather than demand: PM listed 20 daily WTI markets in April and none in July, and the weekly strip went dark entirely in June. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",gf:"",gt:"shrinking on the decade view, flat off the trough, and shrinking hard on PM&rsquo;s own volume", vol:19470000000000, volL:"CME WTI ADV 1,186k &times; 251 &times; 1,000 bbl per CL (NYMEX spec) &times; $65.39/bbl", volB:"notional", rev2:357800000, rev2L:"297.7M contracts &times; $1.2020 energy RPC. ADV from the CME 10-K FY2025; RPC derived volume-weighted from the four quarters CME publishes in its 8-K exh. 99.1 (2026-02-04); CME prints no annual RPC. Whole CME energy complex is $813.2M/yr.", compS:"live-small", comp:"<b>LIVE ON KALSHI, and capped.</b> The <span class=\"mono\">KXWTI</span> strike strip is listed, but carries a <b>$25,000 accountability limit per strike, per member</b>, written into its CFTC product certification. The incumbent at hedger size remains CME CL options plus OTC Asian, digital and barrier structures.", st:"live", n:"WTI settlement bands &mdash; for refiners &amp; producers", eng:"inst", th:"Elevation", shape:"behind",
+ pm:60617334, pmL:"PM's own monthly WTI scalar strip: April 2026 alone. May $40.2M, Jul $17.8M, Aug live $8.2M. Weekly strip live.",
+ exact:60617334, exactL:"PM ALREADY SHIPS THIS EXACT FORM at eight figures a month",
+ rev:null, revL:"NOT SOURCED. The right number is PM's own take on its existing strip — first-party, and not pulled in this run.",
+ native:"CME energy complex ADV 2,695k contracts/day FY2025, a record, but <b>WTI itself is 1,186k and set no record.</b> The record is complex-level; CME names Henry Hub and NY heating oil under it, not WTI.", nativeB:"contracts/day",
+ wall:"hard", wallT:"Basis fit. A band pays a fixed amount, not the actual loss. Then the measured capital wall: PM Clearing does not employ a margin-setting methodology, so a hedger posts 100%.",
+ ev:"both", evT:"The strongest &lsquo;already works&rsquo; evidence here: PM ships the form monthly at eight figures.",
+ pop:"Independent refiners and producers hedging a monthly average: named counterparties, not a segment",
+ test:"One counterparty, one month, one strip at size. A single repeat is the signal.", now:false,
+ bridge:"A producer hedging a monthly average already buys optionality on WTI settlement; a band strip expresses &lsquo;where does the month settle&rsquo; directly. Assumed: (a) a hedger accepts basis risk, the assumption most likely to be false; (b) current PM oil flow is speculative and would not be displaced.",
+ note:"The only row where the product exists, works, and the expansion is purely size and credit."},
+
+{id:"D2",gd:"broken",gr:"+26x YoY against &minus;70%",grL:"TWO HALVES MOVING IN OPPOSITE DIRECTIONS. Prediction markets are growing violently: Kalshi $0.175B (Jan 2025) &rarr; $40.10B (Jul 2026) taker notional; Polymarket international 2024 $14.12B &rarr; 2025 $27.09B &rarr; $60.85B in Jan&ndash;Jul 2026; the three venues together did $2.02B in Jul 2025 against $52.99B in Jul 2026, 26.2x. Crypto perps are shrinking: total perp-DEX volume peaked at $1,189.6B (Oct 2025) and ran $355.8B in Jul 2026, &minus;70%; centralised perp volume is &minus;59% from its Dec 2024 peak; Hyperliquid &minus;44%. Kalshi&rsquo;s onshore perps did $14.77B in June 2026 and $7.27B in July, &minus;51%. The Block chart data, as-of 2026-08-21. Aster&rsquo;s Oct&ndash;Nov 2025 surge created the perp-DEX peak and is widely suspected wash volume.",gpd:"up",gp:"Not buildable from gamma: the perp venue sits behind a separate API. What is countable: the instrument count went 29 to 52 in 23 days and cumulative notional is $11.55B since first trade on 2026-05-06. The reachable proxy for the blocked segment is PM US, $0.002B (Nov 2025) &rarr; $5.00B (Jul 2026), and it is cannibalising PM international, which fell 26% MoM in July while US rose 54%.",gf:"Bernstein (Gautam Chhugani, 2026-04-14): total prediction-market volume $240B in 2026, ~80% CAGR to $1 trillion a year by 2030, industry revenue ~$400M (2025) &rarr; $10.8B (2030e), sports share falling from over 60% to about 30%. Treat with care: Kalshi and Polymarket alone did $211.05B in Jan&ndash;Jul 2026 on the same tracker&rsquo;s basis, so either the full-year forecast is already obsolete or its scope is narrower than it reads.",gt:"broken series: the prediction-market half is growing about 26x YoY, the crypto-perp half is down 59&ndash;70% from a late-2025 peak", vol:35200000000, volL:"PM's own perp venue $2.895bn/30d &times; 365/30, an annualisation of a 30-day window", volB:"est. notional", rev2:124700000, rev2L:"<b>Kalshi is the only CFTC-regulated venue listing perps for US retail, and both operands are published.</b> Its perp book traded $12.531bn of notional in the 44 days from 2026-07-08 to 2026-08-20 (a $103.9bn/yr pace) at the 12.0bp entry-tier taker fee. Volume from The Block, <i>Kalshi Perpetuals Daily Volume</i>, 79 daily points; fee from KalshiEX LLC&#39;s CFTC self-certification (filed 2026-06-24), which states fees are &ldquo;charged on the notional size of the trade&rdquo; and &ldquo;specified in basis points of notional volume&rdquo;, so the rate and the base share a basis. <b>The window starts at the fee&#39;s effective date, not the launch:</b> the schedule took effect no earlier than close of business 2026-07-08, so June&#39;s $14.77bn is excluded even though it is the largest month. <b>Read this as a ceiling on the taker leg.</b> 12.0bp is tier 0 and the ladder falls to 2.6bp above $3,000M of 30-day volume, which pushes the true figure down; Kalshi also charges the maker 5.0&ndash;0.6bp on the same notional with no rebate, which pushes it up. The published corners are $27.0M (top tier, taker only) to $176.7M (entry tier, both legs). The tier mix of Kalshi&#39;s notional is unpublished. <b>US only.</b> Kalshi&#39;s sole Canadian channel, Wealthsimple Predict, carries event contracts in climate, financial markets and economic indicators, but no perps. Canada is a zero-coverage gap in this figure, not a zero.", compS:"live-small", comp:"<b>ONSHORE US PERPS ARE LIVE since 2026-06-15</b>. Kraken via Bitnomial (CFTC-regulated), Coinbase via Deribit, and Kalshi's BTC perp. <b>Crypto underlyings only</b>: nobody offers onshore US perps on equities, commodities or indices, which is where 69.8% of PM's own perp volume sits.", st:"live", n:"Perps &mdash; for US &amp; Canada retail", eng:"beach", th:"Displaced", shape:"seg",
+ pm:630599, pmL:"NVDA weekly-close binary: the form US retail CAN reach. PM sells Americans a dated binary and everyone else a 10x perpetual on the same underlying.",
+ exact:2895250600, exactL:"$2.90B/30d notional on PM's own perp venue: 52 instruments, $11.55B cumulative since first trade 2026-05-06 (estimated notional, NOT USD cash traded, and not annualised)",
+ rev:null, revL:"NOT SOURCED. PM's perp fee schedule was not obtained. Notional is measured first-party; the revenue it produces is not.",
+ native:"PM's own venue: 52 instruments, 69.8% non-crypto, WTIOIL most-traded ever at $2.15B", nativeB:"notional",
+ wall:"hard", wallT:"Venue eligibility first, since a US resident cannot trade there at any size. Then the settlement asset: pUSD is venue-internal, no DCO, no segregated funds. Caps are a distant fourth.",
+ ev:"one", evT:"Product demand is OBSERVED. Target-segment demand is NOT, and structurally cannot be, because the segment is blocked.",
+ pop:"US + Canadian retail: already PM customers on the event side, blocked from this venue",
+ test:"Cannot be tested without the clearing route. The one row where the test IS the dependency.", now:false,
+ bridge:"Current offshore users cannot be US or Canadian users, precisely because those users are blocked, so their behaviour says nothing about the blocked segment. What is established: the PRODUCT works at $2.9B/30d. What is assumed: that US retail resembles the population already using it.",
+ note:"Onshore route is stratified: 9 crypto instruments inside the CFTC precedent; SP500/NAS100 pending; metals and oil expressly NOT extended; 36 single-name equities hardest. The fastest-growing half sits in the hardest tier.<br><br><b>COMPETITIVE BENCHMARK:</b> Ostium, a dedicated RWA perp DEX, carries <b>$183.4M open interest against PM&#39;s $31.6M</b> (about 5.8x) on 44 pairs versus 52, with $46B+ cumulative. And <b>&gt;95% of Ostium&#39;s OI is real-world assets</b>, independently replicating PM&#39;s own 69.8% non-crypto finding on a separate venue. PM&#39;s perp venue isn't a unique asset; it is a late entrant in a category a funded specialist already leads."},
+
+{id:"E5",gd:"broken",gr:"value +36%, count &minus;10%",grL:"THE SERIES IS CYCLICAL, NOT TRENDING. Announced global M&amp;A value $3.9T (2019) &rarr; $4.6T (2025) = +2.8%/yr, LSEG/Refinitiv Deals Intelligence: a rate that is arithmetically true and analytically worthless, describing two endpoints of a round trip through a $5.9T 2021 peak and a $2.9T 2023 trough. 2025 is still 22% below the 2021 peak. Jan&ndash;Jul 2026 is $3.19T, +36% YoY. DEAL COUNT MOVES THE OTHER WAY in every one of those years: &minus;14% (2024), a five-year low (2025), &minus;10% (Jan&ndash;Jul 2026), with average deal size going $63.7M &rarr; $116.7M. A board showing value says M&amp;A is booming; a board showing count says it is dying; both are true. Provider basis diverges more than 30% for the same year; 2023 reads $2.9T at LSEG, $3.2T at Bain, $2.27T at S&amp;P Global. Merger-arb returns are a third basis again: Barclay index +0.95% (2022) &rarr; +7.38% (2025), +2.17% YTD through July 2026.",gpd:"up",gp:"Growing, but the deal-completion form specifically is a rounding error beside the who-acquires-X form. Warner Bros. completion sits at 1,244,720 open to 2027-06-30. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",gf:"Goldman Sachs Global Banking &amp; Markets (~2026-03-24): pure M&amp;A volume could reach $3.8 trillion in 2026. Basis differs from LSEG&rsquo;s (GS excludes spinoffs, private funding rounds and SPAC deals), so it is not comparable to the $3.19T-through-July figure above.",gt:"broken series: value at a 2026 record and still below its 2021 full-year peak; count shrinking three years running", vol:66000000000, volL:"<b>$66.0B AUM</b> at 2026 Q1 (BarclayHedge quarterly series), capital deployed in the strategy, not annual turnover. Merger arb is ~1.08% of the $6,089.7B hedge fund industry. Turnover remains unpublished.", volB:"AUM", rev2:1320000000, rev2L:"<b>$66.0B of merger-arb AUM</b> (BarclayHedge/ION Analytics, 2026 Q1, a free quarterly series back to 2010 Q1). At a 2% management fee that is <b>~$1.32B/yr</b> of fees; the fee rate is conventional, not sourced. Peak was $130.6B in 2022, so the strategy has roughly halved. HFR genuinely doesn't break the line out; BarclayHedge does.", compS:"live-small", comp:"<b>LIVE ON KALSHI AND POLYMARKET, both retail-sized.</b> Kalshi's <span class=\"mono\">KXTAKEOVERACQ</span> carries the same $25,000 per-member cap. The incumbent for funds is bilateral: bank deal-contingent hedges and regulatory termination-fee insurance.", st:"live", n:"Deal-completion binaries &mdash; for merger-arb funds", eng:"inst", th:"Elevation", shape:"seg",
+ pm:1244699, pmL:"&ldquo;Who will close Warner Bros. acquisition?&rdquo; LIVE. Paramount-close-by-2026 151,636 live. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",
+ exact:1244699, exactL:"the form is live: served only on retail-salient deals, thinly",
+ rev:null, revL:"NOT CONVERTIBLE. $4.6T is announced deal VALUE — not volume, not revenue. The tradeable quantity is the arb spread position, which nobody publishes.",
+ native:"$4.6T announced M&amp;A 2025, 68 deals >$10B: transaction size, explicitly NOT tradeable notional", nativeB:"deal value/yr",
+ wall:"hard", wallT:"Depth: arb desks position in 8-9 figures; PM's deepest financial book is $4.25M resting.",
+ ev:"one", evT:"The form works on PM today. The professional-demand half is not sized in any usable unit.",
+ pop:"Merger-arb funds, a specialist industry already analysing exactly this probability",
+ test:"The Warner Bros cluster is LIVE. Watch whether it clears $1M while the spread trades in billions. Costs nothing.", now:true,
+ bridge:"Merger arb prices exactly one probability and expresses it by holding the target and shorting the acquirer, carrying financing cost, borrow and beta. A completion binary isolates it. Adverse selection is the real risk and is NOT one of the eight walls, a taxonomy gap flagged rather than hidden.",
+ note:"Best evidence-per-dollar in the set: the falsifier is already running and free to observe."},
+
+{id:"P3",gd:"down",gr:"&minus;11% H1 2026",grL:"THE LIVE YEAR CONTRADICTS THE RATE. NG ADV 492k/day (FY2022 trough) &rarr; 916k/day (FY2025 record) = +23.0%/yr, contracts/day, CME FY2025 10-K. But H1 2026 natural gas ADV is 868k, DOWN 11% on H1 2025, and Q2 2026 is 658k, DOWN 24% on Q2 2025. Anyone quoting +23%/yr for natural gas today is quoting a rate the live year is actively contradicting. The ten-year series is a U, not a trend: NG fell 17% from 2017 to 2022 before the run, and a single 10-year CAGR of +6.9%/yr describes no period that happened.",gpd:"down",gp:"&minus;60.0% in two months, and the recurrence the row leans on is thinning. The monthly ladder ran April 366,632 &rarr; May 627,654 (peak) &rarr; June 378,055 &rarr; July 250,788, with August open at 68,221. The weekly ladder is down about 50% since April, and the daily form is being wound down: 21 daily markets in April, none closed in August. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",gf:"",gt:"growing on the multi-year series, shrinking in 2026 on both CME and PM", vol:7990000000000, volL:"CME Henry Hub ADV 904k &times; 251 &times; 10,000 MMBtu per NG (CME spec) &times; $3.52/MMBtu", volB:"notional", rev2:272700000, rev2L:"226.9M contracts &times; $1.2020 energy RPC. ADV 904k from the CME press release 2026-01-05, a record; RPC derived volume-weighted from the four quarters CME publishes in its 8-K exh. 99.1 (2026-02-04); CME prints no annual RPC.", compS:"live-at-scale", comp:"<b>LIVE AT SCALE: six venues.</b> <span class=\"mono\">xyz:NATGAS</span> $8.9M OI / $7.4M 24h; Bitget <span class=\"mono\">NATGASUSDT</span>; Gate <span class=\"mono\">NG_USDT</span>; Paradex <span class=\"mono\">NG-USD-PERP</span>; Gains <span class=\"mono\">NATGAS/USD</span>; Kalshi daily contracts.", st:"live", n:"Natural gas perps &mdash; for PM's own ladder traders", eng:"beach", th:"Projection", shape:"cell",
+ pm:627654, pmL:"Recurring monthly NG ladders with real repeat volume: May 627,654, Jun 378,055, Apr 366,632, Jul 250,788, Aug OPEN 63,239, weekly OPEN. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",
+ exact:0, exactL:"no gas instrument among the 52 perps",
+ rev:null, revL:"DERIVABLE, NOT YET DONE — same CME product-level route as rates.",
+ native:"904k contracts/day CME natural gas, FY2025", nativeB:"contracts/day",
+ wall:"solvable", wallT:"Retail access: contract size and roll.",
+ ev:"both", evT:"Best broken-wrapper evidence in the set: UNG holds ~$504M after a cumulative 1:128 reverse split.",
+ pop:"Retail already trading PM's monthly gas ladders, month after month",
+ test:"List offshore. The recurring ladder volume IS the pre-existing audience.", now:true,
+ bridge:"CME gas volume is professional flow. What makes it addressable is that PM's own gas ladders recur monthly with real repeated volume. Assumed: ladder traders prefer a continuous linear payoff to a monthly strike.",
+ note:"The repeat pattern is the point: not one spike, six consecutive months."},
+
+{id:"E2",gd:"up",gr:"+20.5%/yr, accelerating",grL:"THE FASTEST-GROWING LISTED PRODUCT IN THE SET. SPX options ADV 1,265,650/day (2019) &rarr; 3,882,506/day (2025) = +20.5%/yr, contracts/day, Cboe Volume &amp; RPC Report. 2026 YTD (Jan&ndash;Jul) is 4,973,401, +28% over FY2025. Accelerating, not decaying. The 0DTE share is the actual story and it is all Cboe-published: ~6% (2017) &rarr; 43.1% (H1 2023) &rarr; 59% (FY2025) &rarr; 66.2% (Jul 2026, a record). Price is flat (index-options RPC +0.9%/yr), so ALL the revenue growth is volume. Two structural breaks: daily SPX expirations completed in 2022, so the rate is +4.0%/yr before and +29.8%/yr after; and the pattern-day-trader rule was repealed in June 2026, after which Cboe reports SPX simple order counts +40% across retail channels.",gpd:"up",gp:"Read this one carefully: the monthly total collapsed 95% and that is a SUPPLY DECISION, not demand decay. SPX daily up/down peaked at 11,046,496 in Feb 2026 and ran 594,636 in August. Over the same window the market count went 28 &rarr; 1, and volume PER MARKET rose from 424,900 to 594,636, its second-highest level ever. The monthly SPX ladders are separately growing. The largest single SPX day PM has produced is 1,713,472 on 2026-03-02, 62% larger than the figure in this row. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",gf:"Cboe Global Markets issuer guidance, 2026-07-31: FY2026 organic total net revenue growth raised to mid-to-high teens. That is a revenue forecast, not a volume forecast; nothing published forecasts forward SPX ADV or 0DTE share.",gt:"growing, strongly, and accelerating", vol:null, volL:"Cboe publishes two bases for SPX and they are not interchangeable; neither is carried as a single figure.", volB:"—", rev2:896900000, rev2L:"SPX options ADV 3,882.5k &times; 250 = 970.6M contracts &times; $0.924 index-options RPC (Cboe Volume &amp; RPC Report, Year TD column, updated 2026-01-06). <b>The largest single-product revenue pool in this set.</b>", compS:"live-at-scale", comp:"<b>THIS ROW IS TAKEN.</b> Cboe launched <span class=\"mono\">XSPBW/XSPBX</span> index binaries on 2026-06-23 with <b>no position limit at all</b>, the broad-based index exemption. An institution can already express size in a listed binary on SPX. Incumbent otherwise: SPX options, FLEX options, OTC digital notes.", st:"live", n:"Index level &amp; drawdown &mdash; for institutional desks", eng:"inst", th:"Elevation", shape:"behind",
+ pm:1059513, pmL:"Every cadence already run: daily SPX open up/down 1,059,513, the largest index number in the set. Monthly threshold 192,842; monthly close 135,631; weekly 78,972. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",
+ exact:1059513, exactL:"the form runs at every cadence, but at retail size",
+ rev:null, revL:"PARTIALLY SOURCEABLE. Exact annual SPX premium needs aggregation, but Cboe publishes net-premium data and approximate SPX notional. Not pulled in this run.",
+ native:"970.6M SPX options/yr, 3.9M ADV, 59% 0DTE", nativeB:"contracts/day",
+ wall:"structural", wallT:"Capital efficiency, measured rather than argued: fully collateralised against SPAN-margined alternatives at a fraction of the cost.",
+ ev:"one", evT:"Signal is options contracts. The institutional futures component is UNSOURCED.",
+ pop:"Institutional desks, currently served only at retail size",
+ test:"Raise the cap on one contract and approach one desk. The cap is a config constant, not a build.", now:false,
+ bridge:"Professionals have revealed a preference for short-dated path-independent payoffs, which is structurally what an event contract is. Assumed: 0DTE demand is about payoff SHAPE rather than delta-hedgeable exposure; if the latter, the bridge collapses.",
+ note:"$1.06M on a daily up/down is the largest index figure PM has produced. The open question is only whether it scales in size."},
+
+{id:"E8",gd:"up",gr:"+34.7%/yr over 3 years",grL:"THE FASTEST-GROWING ROW IN THE SET, verified on three independent bases. Cat-bond issuance $10,478.9m (2022) &rarr; 2025 = +34.7%/yr; the ten-year rate from 2015 is +12.9%/yr and the seven-year from 2018 is +13.0%/yr, so the recent acceleration is real rather than a base effect. H1 2026 alone was $17.98bn. Issuance is a FLOW OF NEW PAPER, not turnover; outstanding capital is a separate and larger stock, and neither is traded volume. Artemis, retrieved 2026-08-21.",gpd:"flat",gp:"Season-driven rather than trending, and the parametric-shaped slice specifically is not growing. By year of resolution: 2021 335,704 &middot; 2023 201,589 &middot; 2024 2,164,596 &middot; 2025 1,656,632 &middot; 2026 975,199 closed and open combined. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",gf:"Aon Securities (via Artemis, 2026-07-02): catastrophe bond issuance is expected to exceed $20 billion for the second year running in 2026. That is a floor rather than a central estimate; H1 2026 alone was $17.98bn.",gt:"growing strongly, and independently confirmed on all three bases", vol:900000000, volL:"~$900M of ILW limit placed 2025 YTD using PERILS indexes: a 10-year record, and a FLOOR, since it excludes ILS and cyber deals", volB:"limit placed", rev2:2350000000, rev2L:"<b>The largest revenue pool in this set.</b> Non-life ILS capital $136bn at 2025-12-31 (Aon; Gallagher Re independently $135bn) &times; a 1.5&ndash;2.0% management fee = $2.0&ndash;2.7bn. The AUM base is doubly sourced; the fee rate is not.", compS:"otc-only", comp:"<b>OTC-ONLY, and every listed attempt has died.</b> Incumbent is industry-loss warranties ($5&ndash;7bn/yr), cat bonds ($65.6bn outstanding) and parametric policies. Tremor runs weekly ILW auctions, the closest thing to a market. No continuous listed venue survives.", st:"live", n:"Parametric triggers &mdash; for insurers &amp; ILS funds", eng:"inst", th:"Elevation", shape:"seg",
+ pm:340534, pmL:"&ldquo;Any Category 4 hurricane landfall before 2027?&rdquo; LIVE. Cat-5 2025 188,260. A regional landfall contract 10,865 live, the parametric-shaped variant. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",
+ exact:10865, exactL:"the parametric-shaped regional contract: live, but small",
+ rev:null, revL:"$25.6B is cat-bond ISSUANCE — not traded volume and not revenue, so it is not carried as either. The revenue analogue is ILS structuring and management fees, which is not sourced.",
+ native:"$25.6B cat bond issuance 2025 across 122 deals; $61.3B outstanding", nativeB:"issuance/yr",
+ wall:"hard", wallT:"Depth, then credit and clearing, though the QCX DCO is the substantive answer here.",
+ ev:"one", evT:"25 years of ILS proves institutions HOLD catastrophe risk. It doesn't prove they want it screen-traded.",
+ pop:"Insurers, reinsurers and ILS funds",
+ test:"One Atlantic season, watching whether the ILS cohort appears at all", now:true,
+ bridge:"A cat bond is not a binary. The instrument spans indemnity, industry-loss, modeled-loss and parametric triggers, and can lose principal partially. But the PARAMETRIC subset is trigger-based and binary-like, and ILS capital has 25 years of holding exactly that. Assumed: a buyer would use a venue-listed trigger rather than a multi-year collateralised ratings-eligible note.",
+ note:"THE ONE ROW where the institution would SUPPLY liquidity: ILS funds are natural sellers, so the depth wall need not fall first."},
+
+{id:"D1",gd:"down",gr:"&minus;1.44%/yr for 22 years",grL:"THE CLEAREST SHRINK IN THE SET, on every basis, and the nominal figure halves the true decline. US total pari-mutuel handle $15,180m (2003 peak) &rarr; $11,037m (2025) = &minus;27.3%, &minus;1.44%/yr nominal, amount wagered on US Thoroughbred races, all sources. The Jockey Club Fact Book, source Equibase. IN 2025 DOLLARS that is $26,560m &rarr; $11,037m = &minus;58.4%, &minus;3.91%/yr real (CPI-U annual averages, BLS CUUR0000SA0; this deflation is derived here, not the Jockey Club&rsquo;s). Every window is negative in real terms, including 2019&rarr;2025 at exactly 0.00% nominal and &minus;3.77%/yr real. On-track handle, the collapsing component, went $2,944m (1996) &rarr; $683m (2025), &minus;88.7% real. The supply side is falling 3&ndash;5%/yr and still falling: races run &minus;59.5% since 1990, foal crop &minus;60.3%, starters &minus;53.2%.",gpd:"down",gp:"Withdrawn, and the withdrawal is visible in the volume.",gf:"",gt:"shrinking, and it is the clearest shrink in the set", vol:11040000000, volL:"US total pari-mutuel handle 2025, published directly (Jockey Club Fact Book)", volB:"handle", rev2:2430000000, rev2L:"$11,037M handle &times; 22% blended national takeout. On-track handle is $683M of it, against more than $2bn in 2002.", compS:"live-at-scale", comp:"<b>LIVE AT SCALE, outside prediction markets</b>. $11.04B US pari-mutuel handle 2025 through tracks and ADWs, plus NJ fixed-odds racing. Polymarket ran it and pulled it: the falsifier fired on us, not on a competitor.", st:"live", n:"Race-day markets &mdash; for US racing bettors", eng:"beach", th:"Displaced*", shape:"seg",
+ pm:1239196, pmL:"2025 Kentucky Derby. Then the 2026 Derby shows <b>$37.31</b>, the refund visible in the volume figure after Churchill Downs objected. Every racing market PM has run is closed; zero open.",
+ exact:0, exactL:"withdrawn: PM refunded every 2026 trade",
+ rev:2200000000, revL:"$11.03B pari-mutuel handle 2025 &times; ~20% published takeout &asymp; <b>$2.2B/yr</b> to tracks and ADWs. Declared conversion; takeout varies by track and bet type.",
+ native:"$11.03B US pari-mutuel handle 2025", nativeB:"handle/yr",
+ wall:"structural", wallT:"Interstate Horseracing Act 1978: content-producer consent. Churchill Downs objected and PM withdrew.",
+ ev:"both", evT:"A WITHDRAWN subject, not an untouched one. PM's own book proves both the demand and the wall.",
+ pop:"US racing bettors",
+ test:"NJ fixed-odds racing since 2022 is the natural experiment: UNTESTED", now:false,
+ bridge:"PM took real money on the 2025 Derby, then refunded every 2026 trade when the rightsholder objected. Assumed: a consent or licensing route exists that PM declined, rather than one that does not exist.",
+ note:"Thesis boundary worth stating: the $11B is legally SERVED demand, not displaced. The genuinely displaced quantity is only what PM's own withdrawn book would have taken."},
+
+{id:"P7",gd:"up",gr:"+13.4%/yr",grL:"Agency MBS trading ADV $244.0bn/day (2022) &rarr; $355.7bn/day (2025) = +13.4%/yr, average daily trading volume, FINRA TRACE. SIFMA Capital Markets Fact Book 2026 Edition, Table 40, published 2026-08-13. The series is a V rather than a trend, and the origination base it sits on is still 56% below its peak.",gpd:"flat",gp:"Small, and flat-to-up rather than declining.",gf:"Mortgage Bankers Association, Mortgage Finance Forecast, 2026-08-20 (ORIGINATION volume, not trading volume): 2026 $2,147bn &middot; 2027 $2,144bn &middot; 2028 $2,184bn, with refi falling $713bn to $655bn. Essentially flat for three years.",gt:"growing on trading volume, but the series is a V and the origination base is still 56% below peak", vol:94600000000000, volL:"SIFMA agency MBS $376.8bn/day 2026 YTD through July, +8.9% y/y &times; 251: an extrapolation from seven months", volB:"notional", rev2:5515, rev2L:"<b>Three venues list a traded market on the 30-year mortgage rate right now, and two of them publish enough to price it.</b> Kalshi&#39;s KXMORTGAGERATE and KXFM30YMTG traded 80,656 contracts between 2026-04-02 and 2026-08-21 (Kalshi trade API), a 208,790/yr pace, at the $0.0175 peak of its 0.07 &times; C &times; P &times; (1&minus;P) schedule = $3,654. Polymarket&#39;s live 2026 mortgage-rate market turned $50,730 in 199 days (Gamma API), a $93,048/yr pace, at 0.04 &times; C &times; p &times; (1&minus;p) = $1,861. <b>The coefficient is 0.04, not 0.06:</b> Polymarket now publishes per-category rates and the Finance tier is 0.04, confirmed against the exchange contract&#39;s own on-chain fee field to five decimal places. The 0.06 schedule is Polymarket US, a different entity that does not govern this book. The $0.50 evaluation point is conventional, not sourced; at the markets&#39; own traded prices the pool is nearer $4,500. <b>No plausible parameter moves it above five figures.</b> <b>CME&#39;s OB30C is excluded because CME blocks automated access to its volume</b>, but it is bounded three ways: absent from the FY2025 10-K interest-rate table whose smallest line is 430k ADV; absent from the CFTC Commitments of Traders financial-futures report for the week ending 2026-08-18, whose smallest market carries 1,014 contracts of open interest; and Yahoo shows its front month last trading 2026-06-11 at 20 contracts on a 4.00-point bid-ask, $20,000 wide per contract.", compS:"none", comp:"<b>NO PERPETUAL ANYWHERE</b>: checked 14 perp venues, CFD houses and CEXs. The only continuous retail instrument on a mortgage rate doesn't exist. Kalshi runs live mortgage-rate EVENT contracts with real volume, and CME's OB30C futures have existed since 2025-01-13. <b>The rarest verdict in this set.</b>", st:"live", n:"Mortgage-rate perps &mdash; for homebuyers &amp; originators", eng:"beach", th:"Projection", shape:"cell",
+ pm:50730, pmL:"30-yr PMMS ladder OPEN 50,730, plus a closed threshold family; an eight-metro Parcl home-value complex OPEN ($36K&ndash;$83K each); Dubai real-estate index 91,452. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",
+ exact:0, exactL:"no mortgage instrument among the 52 perps",
+ rev:null, revL:"NOT SOURCED. Agency-MBS turnover is dealer and lender flow, not a revenue pool for this product.",
+ native:"$414.9B/day agency MBS ADV, Q2 2026", nativeB:"notional/day",
+ wall:"structural", wallT:"The index prints daily, so it probably fails the CFTC continuous-spot test, and the funding anchor with it. Binary, not graded: OB30C futures settle to the IDENTICAL index, so a hedger has zero basis IF OB30C trades, and none if it does not.",
+ ev:"one", evT:"OB30C volume UNTESTED. CME blocks automated access and its terms were not circumvented. Best proxy: as of July 2026 originators still hedge with UM30 5.5 TBA at 67%.",
+ pop:"Homebuyers and originators: a genuine retail HEDGE, rare in this set",
+ test:"Source OB30C volume from a licensed feed. Everything else follows from that one number.", now:false,
+ bridge:"Agency-MBS turnover is dealer and lender flow, not borrower demand. Assumed: a borrower or small originator would hold a bp-quoted perp where the institutional market uses TBAs.",
+ note:"PM does hold this subject in event form (an open 30-year PMMS ladder), so the new cell is the payoff form, not the subject."},
+
+{id:"G1",gd:"down",gr:"first contraction in 7 years",grL:"BASIS WARNING: no tradeable market exists, so everything here is industry revenue or attention, not traded volume. Japan manga market &yen;441.4B (2018) &rarr; &yen;692.5B (2025) = +6.6%/yr, print + digital, AJPEA / Research Institute for Publications, but that rate describes no year of the series, and COVID took manga +23% in a single 2020 step. 2025 was THE FIRST MANGA CONTRACTION IN SEVEN YEARS (&yen;704.3B &rarr; &yen;692.5B), a genuine regime change rather than noise. Print is &minus;5.3%/yr and shrinking every year since 2017, with 2025 its worst year. Digital is +14.8%/yr but decelerating hard: +8.9% (2022) &rarr; +7.8% (2023) &rarr; +6.1% (2024) &rarr; +2.9% (2025). Anime, a different basis again, is +9.9%/yr to &yen;3.8407T (2024).",gpd:"none",gp:"Not buildable as a series: two markets, one week, one franchise.",gf:"METI, 18th Entertainment and Creative Industrial Policy Seminar, 2026-03-27: anime OVERSEAS target &yen;6 trillion by 2033 from a &yen;2.1702T (2024) base, about 2.8x in nine years; manga &yen;1T by 2033 from &yen;300B. This is a government policy TARGET, not a forecast, and should be treated accordingly.",gt:"manga total flat-to-shrinking (first contraction in seven years); print shrinking terminally; digital growing but decelerating toward flat; anime growing strongly, overseas", vol:null, volL:"No pool. Points and play-money volume are not denominated in anything that converts.", volB:"—", rev2:null, rev2L:"No real-money venue lists a manga or anime plot outcome, so no intermediary earns a fee on one. Japan runs <b>four</b> prediction venues: Miraima, Beenz, POYP and gumi&#39;s Yosoku Hiroba (launched 2026-06-09). All settle in points by design, because a cash stake on an entertainment outcome is gambling under Penal Code Arts. 185&ndash;186 and only a special statute can authorise a product. A figure would require Polymarket or Kalshi to list a plot contract, from which the take is derivable against their published fee schedules. <b>A licensed book listing one would not suffice</b>: no operator discloses per-market gross win and the UKGC publishes GGY only at category level.", compS:"live-small", comp:"<b>THE SUBJECT IS LIVE ON REAL MONEY; ONLY THE PLOT FORM IS ABSENT.</b> Polymarket has settled anime markets at real size. Crunchyroll Best Anime Song <b>733,516 contracts</b>, Best Original Anime 437,045, Anime of the Year 251,835, Anime Awards 2026 54,263. Kalshi has listed anime markets too. What no real-money venue anywhere runs is a market on a STORY outcome: will a character die, how an arc ends, what happens in chapter N. Miraima (Japan) runs 2 manga markets on points; Manifold has depth on play money.", st:"live", n:"Manga plot markets &mdash; for anime readers", eng:"acq", th:"Generated", shape:"cell",
+ pm:613053, pmL:"Anime converts on PM at real size: Crunchyroll Best Anime Song 733,516, Best Original Anime 437,045, Anime of the Year 251,835. Demon Slayer box office 613,053 and 420,136. All industry outcomes; zero plot-event markets. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",
+ exact:0, exactL:"zero plot-event markets for any franchise",
+ rev:null, revL:"NO POOL. Manifold play-money markets and subreddit scale are attention, not spend.",
+ native:"Manifold top-60 includes One Piece plot markets, 935 bettors on one; r/OnePiece 5.3M", nativeB:"no pool",
+ wall:"hard", wallT:"ADVERSE SELECTION: chapters leak through the scanlation chain days early. With real money that is a transfer from fans to leakers every chapter.",
+ ev:"inferred", evT:"The audience converts on Polymarket at six figures, but on awards and box office, which are industry outcomes. Plot-event demand is still inferred, and the leak problem is untested anywhere.",
+ pop:"Anime and manga readers: demonstrably already trading on PM, on the industry wrapper",
+ test:"Arc-level horizons longer than the scanlation lead time. One arc, one franchise.", now:true,
+ bridge:"Box-office conversion establishes that the audience is reachable and will trade an anime-adjacent product. It doesn't establish canon demand. Assumed: readers who trade the commercial wrapper would trade the story itself, which is a different proposition.",
+ note:"Audience reachability is evidenced; canon appetite is not. The leak problem binds either way."},
+
+{id:"G4",gd:"broken",gr:"terminated by law, 2026-05-01",grL:"BROKEN SERIES, not shrinking, terminated, with two breaks about eight months apart: the economic break on 2025-08-21 and the legal one on 2026-05-01. Do not fit a rate through it.",gpd:"up",gp:"The only long-tail row where PM&rsquo;s own volume is growing, and it more than doubled. IPL Champion ran 1,246,483 (2025) &rarr; 2,600,597 (2026), +108.6%. Wider cricket by year of resolution: 177,046 (2024) &rarr; 1,269,218 (2025) &rarr; 2,919,308 (2026), +130% YoY. The auction family remains absent in every phrasing. Read the caveat: this growth happened WHILE India was banned, so it measures the diaspora and the global cricket audience, not the named Indian population. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",gf:"None published for post-ban Indian real-money gaming, because there is no market to forecast. The only forward figure on the record is a pre-ban projection now overtaken by the ban it appears alongside; do not use it.",gt:"broken series: not shrinking, terminated, with two breaks about eight months apart", vol:null, volL:"Moot for the named population.", volB:"—", rev2:1445847, rev2L:"Polymarket&#39;s own take on its own cricket book: 320,942,661 contracts across 6,968 cricket events in the twelve months to 2026-08-21 (Gamma API), at the Sports taker rate of 0.05 and net of the 15% Sports maker rebate, so the venue keeps 85%. <b>The price term is measured, not assumed:</b> contract-weighted p(1&minus;p) is 0.106, computed from 146.3 million contracts of that book&#39;s own trades. The p=0.50 maximum of 0.25 would overstate the take by 2.36x. <b>This prices the adjacent listed cricket book, not the proposed product</b>; no IPL player-auction market exists on either venue. Polymarket: 0 of 7,356 cricket events mention auction, bid, sold or draft. Kalshi: of 11,195 series, the 8 matching auction are art, collectibles and carbon allowances.", compS:"withdrawn", comp:"<b>THE AUCTION SLICE WAS BUILT AND DIED.</b> Probo booked <b>&#8377;750 Cr in a single IPL season</b> and then shut down. Cricket as a subject is live at scale on both majors; the personnel-auction slice specifically is closed. <b>And Kalshi is winning the subject 14.8 to 1.</b> It self-certified match-level cricket on 2026-03-23, lists 14 IPL series plus a Women&#39;s IPL series, and distributes through Robinhood; its cricket book outtraded Polymarket&#39;s 14.8x in July 2026. <b>Both venues were blocked in India that month</b>, so the gap is not an India-access artefact; it is regulated distribution into a lawful market, and it is where the addressable pool actually sits.", st:"live", n:"IPL auction markets &mdash; for Indian cricket fans", eng:"acq", th:"Generated", shape:"cell",
+ pm:2600000, pmL:"Cricket subject HELD: IPL Champion $2.6M, MLC, Maharaja T20. The auction family is absent in every phrasing.",
+ exact:0, exactL:"no auction markets in any phrasing",
+ rev:null, revL:"NO POOL. Dream11's paid population is a belief-in-edge proxy, not a revenue pool for this product.",
+ native:"Dream11 paid-until-banned population; the IPL auction is a scheduled dated event", nativeB:"no pool",
+ wall:"hard", wallT:"<b>The Act is fully in force and has never been stayed.</b> India&#39;s Promotion and Regulation of Online Gaming Act 2025 sat unnotified for eight months and then commenced in one step on 2026-05-01 (S.O. 1994(E), gazetted 22 Apr 2026), all twenty sections at once. No court has stayed, narrowed or struck down a single provision, and the petitioners&#39; own application for interim directions has been pending since 2025-11-20 without a ruling. <b>And no High Court route remains:</b> the Supreme Court&#39;s transfer order of 2025-09-08 directs that any future High Court challenge &ldquo;shall not be entertained&rdquo; and stand transferred to it. <b>Polymarket is specifically blocked.</b> MeitY&#39;s VPN advisory of 2026-04-25 names it in its own words as among the &ldquo;illegal and blocked prediction market and online betting platforms&rdquo; under IT Act s.69A, five days before the Act even commenced, so the block rests on s.69A alone. Kalshi added India to its restricted jurisdictions on 2026-06-17.",
+ ev:"inferred", evT:"A paying fantasy population demonstrates believed edge on player valuation.",
+ pop:"<b>The diaspora, not the named population. And the diaspora is legally reachable.</b> Indian residents sit behind the Act; non-resident Indians abroad do not. Four independent reasons: s.1(2) extends the Act along the SERVICE axis, reaching an operator&#39;s offering rather than a person&#39;s playing; there is no equivalent of IT Act s.75, which would have reached offences committed abroad; <b>the Act creates no player-side offence at all</b>, since s.5 and s.9(1) bind only those who OFFER; and FEMA is residence-based, so an NRI is by definition outside it. An NRI abroad, on foreign-earned funds, at a foreign operator is outside every limb. Repatriating winnings into India re-engages FEMA Schedule I.",
+ test:"<b>A dated test already exists, and it is seven weeks out.</b> The Supreme Court hears the challenge to the Act&#39;s vires on <b>6 and 7 October 2026</b>: final hearing, sixteen matters, CJI Surya Kant with Bagchi and V. Mohana JJ (order of 2026-08-05). Opinion trading is inside that batch, not beside it: Probo is a petitioner in T.C.(C) 114/2026, and MPL and TradeX are parties to two of the others. <b>Do not read the May judgments as having settled it.</b> The phrase &ldquo;Promotion and Regulation of Online Gaming&rdquo; appears nowhere in the 269-page <i>Junglee Games</i> judgment; it and <i>Gameskraft</i> decide State competence and GST. Worse for the Union, <i>Junglee</i> rejected the Entry 31 List I and residuary arguments in favour of the States, which cuts against Parliament&#39;s competence to have enacted this Act at all. That question is live and undecided.", now:true,
+ bridge:"A paying fantasy population demonstrates believed edge on player valuation. Assumed: that belief transfers from squad selection to auction price. <b>What is no longer assumed is who is reachable</b>: India&#39;s law does not reach NRIs abroad, but Polymarket&#39;s own geoblocks do reach most of them, so the legal analysis and the venue&#39;s terms point at two different audiences and only the smaller one is served today.",
+ note:"PM ALREADY runs sale-price threshold markets on collectible auctions: Christie&#39;s, a McLaren F1 GTR, a T-rex skeleton. The payoff form is proven in-house. <b>But the row&#39;s title is wrong in BOTH halves, and how it is wrong is the finding.</b> Not Indian residents: the Act binds the operator and India blocks the venue. And <b>not the diaspora the row implies</b>, since Polymarket&#39;s own terms block 39 countries including the US, UK, Australia, Singapore and Canada&#39;s four largest provinces, which hold the largest Anglosphere NRI populations. What its cricket book actually reaches is the Gulf and Southeast Asian diaspora plus the general non-blocked global audience. The correct label is <b>the cricket audience outside India, on venues that do not face India</b>."},
+
+{id:"P5",gd:"down",gr:"&minus;27.8% in FY2025",grL:"SHRINKING, and the tariff episode did the OPPOSITE of what this row assumes. CME/COMEX copper ADV 133k/day (FY2024) &rarr; 96k/day (FY2025) = &minus;27.8%, contracts/day, futures+options, CME FY2025 10-K. There is no defensible multi-year rate: the series oscillates in a 93&ndash;133 band for eight straight years, and 2018&rarr;2025 is &minus;4.3%/yr with FY2025 below the 2018 level. CME states the cause in its own 10-K: the decrease is due to reductions in demand for the metal from economic instability as well as the tariff environment. The tariff episode suppressed volume; it did not spike it.",gpd:"down",gp:"Dead since February. Total copper volume on PM, all time, is 60,307, all of it in two markets that both resolved 2026-02-28. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",gf:"",gt:"shrinking on CME; dead on PM", vol:3390000000000, volL:"CME COPPER-SPECIFIC ADV <b>96k</b> &times; 251 &times; 25,000 lb per HG (COMEX spec) &times; $5.63/lb", volB:"notional", rev2:34500000, rev2L:"24.1M contracts &times; $1.4303 metals RPC. ADV from the CME 10-K FY2025 metals table; RPC derived volume-weighted from the four quarters CME publishes in its 8-K exh. 99.1 (2026-02-04); CME prints no annual RPC. Copper-specific, not the all-metals line.", compS:"live-at-scale", comp:"<b>LIVE AT SCALE: eight venues.</b> <span class=\"mono\">xyz:COPPER</span> $25.6M OI / $10.4M 24h; Bitget <span class=\"mono\">COPPERUSDT</span> $14.4M 24h; MEXC $5.1M 24h; Ostium <span class=\"mono\">HG/USD</span>; Gate, Paradex, Gains, Kalshi. Plus Kalshi's 2026-08-18 CFTC filing for US copper perps.", st:"live", n:"Copper perps &mdash; for tariff-watching retail", eng:"beach", th:"Projection", shape:"cell",
+ pm:47995, pmL:"Copper entered as binaries, modest and tariff-skewed: HG-by-February 47,995 closed; Sec.232 tariff market 13,909 OPEN. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",
+ exact:0, exactL:"no copper instrument among the 52 perps",
+ rev:null, revL:"DERIVABLE for all CME metals; <b>copper-specific volume remains UNSOURCED</b>, which is this row's real gap — not the conversion.",
+ native:"96k contracts/day CME copper ADV, FY2025, copper-specific", nativeB:"contracts/day",
+ wall:"hard", wallT:"CONTESTED: Kalshi filed with the CFTC for copper perpetuals on 2026-08-18. Offshore uncontested; the US segment is behind.",
+ ev:"one", evT:"Copper-specific volume is now sourced at 96k contracts/day, a tenth of the all-metals line. The pool is real but small: $34.5M of annual exchange revenue, the smallest in this set.",
+ pop:"Retail with a tariff or macro view: PM's copper interest is substantially trade-policy shaped",
+ test:"List offshore tomorrow; no CFTC process needed for that leg.", now:true,
+ bridge:"CME metals volume is professional flow. Assumed: PM's tariff-shaped copper interest converts to price-level interest, which is a different trade.",
+ note:"Contested from two directions: Kalshi filed for US copper perps on 2026-08-18, and <b>Ostium already runs copper as one of its top-OI contracts today</b>. The form is validated and the slot is filling."},
+
+{id:"G3",gd:"up",gr:"+37.5%/yr implied",grL:"BASIS WARNING: no money market has ever existed for recruiting outcomes, so everything here is the adjacent attention and spend pool. NIL + revenue-share compensation $917M (2021-22) &rarr; $4.5B (2026-27) = +37.5%/yr implied, Opendorse, published 2026-07-22. Growing on every measurable basis: NIL spend, portal churn and audience alike.",gpd:"none",gp:"Not buildable: one market, 2,700, closed. The single transfer-portal market is the entire record, and there are zero recruiting markets in any phrasing across the full event set. No second observation, therefore no rate. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",gf:"Opendorse, 2026-07-22: a $4.5B NIL and revenue-share market for 2026-27.",gt:"growing on every measurable basis: NIL spend, portal churn and audience", vol:null, volL:"No money market has ever existed, so there is no volume.", volB:"—", rev2:null, rev2L:"Two separate absences, and the row is the second. <b>No real-money market on a recruiting or transfer-portal outcome is listed at any venue</b>: Kalshi self-certified portal contracts with the CFTC on 2025-12-16 and has still not listed them. <b>And no intermediary revenue pool is published</b> for the adjacent paid recruiting-intelligence business: EDGAR full-text returns seven hits for 247Sports across all filers and all forms, every one a business-description mention rather than a revenue line, and <b>Paramount Skydance does not mention it at all</b> in its 2026-02-25 10-K. Rivals and On3 sit private under one ownership group; Opendorse files only Form D, which discloses offering size, not revenue. A figure would require Paramount Skydance to break out a 247Sports subscription line (which the row would still have to label subscription revenue, not intermediary take) or Kalshi to list the contracts it has already certified.", compS:"none", comp:"<b>KALSHI SELF-CERTIFIED THIS WITH THE CFTC ON 2025-12-16</b>: transfer-portal contracts covering whether college athletes enter the portal and where they commit, resolved on public announcements. <b>Eight months later it has not launched.</b> Verified by scanning all 13,372 Kalshi series on 2026-08-21: zero matches for portal, recruit or signing day, and zero across the 3,491 sports series. Kalshi told CBS it &ldquo;has no plans to immediately offer trading on the portal.&rdquo; <b>And the operator closest to the data carved it out:</b> the On3 &times; Polymarket partnership announced 2026-08-11 expressly excludes high-school and transfer-portal markets. On3&#39;s business is tracking prospects and portal entries, and it declined to let them be traded.", st:"live", n:"Recruiting markets &mdash; for college-football followers", eng:"acq", th:"Generated", shape:"cell",
+ pm:2700, pmL:"One closed transfer-portal market (PJ Haggerty &rarr; NC State). Zero recruiting markets in any phrasing.",
+ exact:0, exactL:"zero recruiting markets",
+ rev:null, revL:"NO POOL. Paid recruiting-intel subscription counts are UNSOURCED.",
+ native:"Crystal Ball scored-prediction culture; paid intel subscriptions", nativeB:"no pool",
+ wall:"structural", wallT:"LISTABILITY: the subjects are minors. Kalshi certified transfer-portal contracts (adults, already-public commitments) and still has not launched them, which suggests the caution runs wider than the minors question alone. <b>The asymmetry is the finding:</b> the four state bans on college athlete props reach <b>performance</b> props, not commitment decisions, and on the Third Circuit&#39;s 2026-04-06 reading the CEA likely preempts state gambling law for CFTC-regulated venues. The venue legally freest to list this is the one declining to. No regulator or court has ruled on the minors point at all.",
+ ev:"inferred", evT:"A competitor with a DCM, the audience and the certification already in hand has chosen not to launch for eight months. That is the most informative fact on this row, better evidence than any pool figure would be.",
+ pop:"College football recruiting followers",
+ test:"Blocked on the minors question before any market question", now:false,
+ bridge:"A population already pays for recruiting intelligence and keeps public prediction scores. Assumed: that converts to real money, and that the minors problem is solvable, which it may not be.",
+ note:"Strongest audience signal, worst legal posture. Those aren't independent."},
+
+{id:"S2",gd:"broken",gr:"capex +66.7%/yr, price broken",grL:"THE UNDERLYING IS FALLING WHILE THE CAPEX COMPOUNDS, and that divergence is the row. AI capex (a proxy, and EXPOSURE rather than traded volume) ran $161.3B (2023) &rarr; $448.3B (2025) = +66.7%/yr across five hyperscalers, Epoch AI from SEC EDGAR XBRL, pub 2026-02-26. Structural break: 2022&rarr;2023 was FLAT at &minus;0.6%, and the regime starts in Q2 2023, so a 2022-based CAGR is an artefact describing no actual year. Against that, the SETTLEMENT UNDERLYING is a broken series: H100 rental peaked at $8.98&ndash;9.39/GPU-hr on hyperscaler tier (2024) and ran $6.20&ndash;6.64 by late 2025; marketplace tier fell 31%; neocloud tier went UP over the same window. Current print is $2.53/GPU-hr on the Silicon Data neo-cloud ticker SDH100RT, August 2026, after a +38% rebound off an Oct-2025 bottom. The tiers differ 2.5x at the same instant, so the right answer depends entirely on which one a contract settles against. Generational confound: the H100 is being displaced by Blackwell, so part of the fall is obsolescence rather than oversupply, and the B200 index has no multi-year history.",gpd:"flat",gp:"Polymarket runs a live, recurring GPU rental-price ladder family, and it is not scaling. Cumulative 1,939,764 contracts. By subject month: Feb 2026 337,175 (1 market) &rarr; Apr 569,716 (1) &rarr; May 114,827 (3) &rarr; Jun 211,248 (3) &rarr; Jul 253,112 (6) &rarr; Aug 154,401 (5, open). The family broadened from one market to six while volume per market fell by roughly 14x. <b>The index changed in April and that matters more than the trend:</b> February settled to Silicon Data, everything since settles to Ornn. Kalshi settles to Ornn as well, so the two retail venues are aligned with each other and NOT with CME, which will bring Silicon Data as a third index on 2026-10-05. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",gf:"Morgan Stanley: $740B AI capex for 2026 (pub 2026-03-11), revised 2026-05-05 to about $805B for 2026 and about $1.1 TRILLION for 2027 across five hyperscalers. CoreWeave guides FY2026 revenue to $12.4&ndash;13.2B. NONE PUBLISHED for the actual settlement underlying: no named forecaster publishes a forward H100 or B200 rental curve, which is precisely the gap the CME contract exists to fill when it lists on 2026-10-05.",gt:"capex growing violently; the settlement underlying is a broken series: down 65&ndash;75% from its 2024 peak on two tiers, up on a third, rebounding 38% off an Oct-2025 bottom", vol:null, volL:"A SPOT MARKET EXISTS and is indexed daily. Silicon Data publishes SDH100RT at <b>$2.53/GPU-hour</b> (2026-08-21) from realised transactions, plus A100, B200 and blended-token indices; Ornn&#39;s OCPI is built exclusively from live spot transactions. Venue-level cleared volume is still UNSOURCED: the indices publish price, not turnover.", volB:"—", rev2:184336, rev2L:"<b>Two venues run live compute-price books and both publish enough to price the take.</b> Kalshi&#39;s 30 GPU-rental series traded 6,319,756 contracts between 2026-06-15 and 2026-08-21 at its published round-up(0.07 &times; C &times; P &times; (1&minus;P)) taker fee for $32,087; Polymarket&#39;s 35-event book traded 1,026,330 contracts in its fee-bearing era at 0.04 &times; C &times; p &times; (1&minus;p) for $5,072 gross, less a published 25% maker rebate. Each is annualised over its own window (68 and 116 days). <b>Every p is the realised execution price of all 160,168 individual trades, not an assumed one</b>: the fee is quadratic in price, and applying the headline maximum would overstate Kalshi by 3.5x and Polymarket by 2.02x. <b>Polymarket charged nothing before 2026-04-28</b>, so 47% of its book&#39;s lifetime volume is fee-free, including its two largest events.", compS:"live-at-scale", comp:"<b>THE SPOT MARKET IS LIVE, THE DERIVATIVE IS LIVE TOO, AND KALSHI IS THE BIGGER VENUE.</b> Spot: Vast.ai runs a continuous bid auction, Akash a USDC reverse auction, Compute Exchange live auctions plus forwards, all real money, all live. Indices: Silicon Data (DRW-backed, $30.5M Series A) and Ornn both publish daily from realised transactions. <b>Kalshi runs 30 live GPU-rental series</b> across H100, H200, B200, A100 and RTX 5090; weekly, monthly, quarterly and annual, 2,024 markets, 6.3M contracts since 2026-06-15. That is 6.2x Polymarket&#39;s contract count in a third of the elapsed time. Polymarket is the second-largest venue in a subject it doesn't lead. Exchange-listed derivatives (CME 2026-10-05, ICE/Ornn, Architect/AX, American Innovation Exchange) are all announced and none is trading. Earlier crypto-rail attempts took zero trades and were delisted.", st:"live", n:"Compute-price markets &mdash; for AI infra buyers", eng:"beach", th:"Projection*", shape:"cell",
+ pm:132175, pmL:"Nearest live neighbour is DRAM-USD, a memory-price perp on PM's OWN venue. Nothing on compute prices.",
+ exact:1939764, exactL:"Polymarket&#39;s own GPU rental-price ladder family across H100, H200, B200, A100 and RTX 5090: 1,486,078 closed plus 453,686 open to 2026-08-21. <b>It settles to the ORNN Compute Price Index, not to Silicon Data.</b> The 15 February markets name the Silicon Data H100 Index; every one of the 237 markets listed from 2026-04-21 onward names an Ornn index. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",
+ rev:null, revL:"NOT CONVERTIBLE. $725B capex and $104.2B backlog are EXPOSURE, not trading and not revenue.",
+ native:"$725B 2026 AI capex; CoreWeave $104.2B take-or-pay backlog", nativeB:"exposure/yr",
+ wall:"solvable", wallT:"Settleability is SOLVED: three providers publish daily rentable-GPU indices from realised transactions. The wall is now competitive timing, not mechanism.",
+ ev:"both", evT:"Spot prices clear and move hard: B200 rental went $2.31 to $4.95/hr since March 2026; Blackwell +48% in eight weeks. Vast.ai runs a continuous bid auction and Akash a reverse auction, both real money, both live. A compute DERIVATIVE is evidenced too, on two venues: Kalshi has traded 6.3M contracts across 30 GPU-rental series since 2026-06-15 and Polymarket 1.94M since February. What is NOT evidenced is a compute derivative clearing at institutional size, because no exchange-listed contract is live until 2026-10-05.",
+ pop:"AI infrastructure buyers and speculators on compute cost",
+ test:"CME lists 2026-10-05, 45 days out. Watch its first month of open interest. <b>The retail half of that test is already running, on a DIFFERENT index:</b> Polymarket and Kalshi both settle to Ornn, CME will settle to Silicon Data. So the launch tests two things at once, and a divergence between the indices would separate them. What the retail half says so far: live, recurring, and not scaling.", now:false,
+ bridge:"Take-or-pay backlog is revealed willingness to pay for compute certainty. Assumed: that willingness transfers to a traded instrument rather than staying bilateral.",
+ note:"<b>FOUR exchanges are launching compute derivatives</b>: CME on NYMEX with Silicon Data (2026-10-05), ICE with Ornn, Architect/AX (perpetuals on GPU and DRAM), and American Innovation Exchange with Compute Desk, whose ComputeConnect converts futures into physical GPU capacity. <b>None is trading yet, so no volume or open interest exists for any of them.</b> CME&#39;s framing: compute becomes a standardized tradable commodity the way oil did. The slot is being taken by both majors within weeks."},
+
+{id:"G5",gd:"dead",gr:"dead 4.75 years",grL:"DEAD. The last replication prediction market closed 2021-11-22. Basis: number of live replication prediction markets, which is ZERO as of 2026-08-21, nearly five years.",gpd:"none",gp:"Not buildable: $0. Only the closed 2021 Ariely market exists, confirmed against the full event set. Zero is the measurement.",gf:"None published. There is no going concern to forecast.",gt:"dead: closed 2021-11-22, nothing has replaced it in about 4.75 years", vol:null, volL:"No pool.", volB:"—", rev2:null, rev2L:"Every replication prediction market ever run was funded by an academic programme and <b>staked its traders with money the programme gave them</b> ($50 per participant, settled as gift cards), so no intermediary took a fee. The platform vendor was paid a software licence, which is a different quantity from a share of turnover. The last market closed <b>2021-11-22</b> and nothing has launched since at Kalshi, Polymarket, Futuur, Insight Prediction, Limitless or Manifold. A figure would require a venue that both takes real money and publishes volume to list a replication contract at all; until one does, there is no publisher and no quantity.", compS:"withdrawn", comp:"<b>BUILT, RUN FOR YEARS, AND FINISHED.</b> The replication-market idea reached its largest-ever scale in academic programmes and concluded. This is a closed experiment, not an open opportunity.", st:"live", n:"Replication markets &mdash; for academics", eng:"acq", th:"Generated", shape:"cell",
+ pm:0, pmL:"Only the closed 2021 Ariely market. Nothing else in the family.",
+ exact:0, exactL:"nothing live",
+ rev:null, revL:"NO POOL.",
+ native:"Pooled replication-market accuracy: markets called <b>75 of 103</b> studies correctly (73%) against 68 of 103 for surveys; Gordon, Viganola, Dreber, Johannesson &amp; Pfeiffer 2021, PLOS One", nativeB:"no pool",
+ wall:"structural", wallT:"Resolution latency: replications take years.",
+ ev:"inferred", evT:"Markets called <b>75 of 103</b> studies correctly (73%) against 68 of 103 for surveys; Gordon, Viganola, Dreber, Johannesson &amp; Pfeiffer 2021, PLOS One. The newest run is weaker: 16 of 28 replicated against a 70% market forecast (Royal Society Open Science 13:250377, 2026-01-01). Camerer 2018 is often cited here and is a different, 21-study paper. It is not the source of any pooled figure.",
+ pop:"Academics and meta-science followers: tiny",
+ test:"One high-profile replication cohort with a fixed reporting date", now:true,
+ bridge:"Published work shows this population forecasts replication accurately. Assumed: demonstrated forecasting skill converts to willingness to stake, in a population small enough it may not clear.",
+ note:"The only row where forecasting edge is proven in the literature, and the population may be too small to matter."},
+
+{id:"P2",gd:"flat",gr:"+8.7%/yr triennial, +0.3% YoY",grL:"THE LARGEST STATIC NUMBER IN THE SET, AND ITS GROWTH SIGNAL IS THE WEAKEST: three bases give three different answers. BIS Triennial, the headline: global OTC FX turnover $7,468bn/day (Apr 2022) &rarr; $9,595bn/day (Apr 2025) = +8.71%/yr, net-net daily average in April. But BIS itself says April 2025 turnover was elevated by tariff announcements, and the higher-frequency North American basis is +0.3% YoY, or flat. Listed CFD-broker revenue and client counts are flat-to-shrinking on a third basis again. A triennial reading three years old cannot detect a turn.",gpd:"down",gp:"&minus;95%, on both measures, and this one IS genuine demand decay rather than a listing change. <b>The exactly-addressable onchain slice is tiny and measured:</b> Ostium has retained $699,456 of FX fees over its lifetime, 0.971bp on $7.20bn of FX notional; across every venue that lists FX perps the take is roughly $370,000 a year. Lighter and Avantis charge zero on FX by design; Helix Perp&#39;s entire 30-day fee take is $1.58. <b>Polymarket&#39;s own FX take is $434 net per 30 days</b> across a 777-market book. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",gf:"None published for global FX turnover. BIS does not forecast, and the next Triennial reading is April 2028.",gt:"growing on the triennial basis, FLAT on the higher-frequency North American basis, flat-to-shrinking on listed-broker revenue, and shrinking 95% on PM&rsquo;s own daily volume", vol:2419000000000000, volL:"$9.6tn/day global OTC FX turnover, BIS Triennial Apr 2025 net-net &times; 252 days", volB:"notional", rev2:1196000000, rev2L:"<b>A floor over what is actually published, not an estimate of the market.</b> Japan is carried whole: FFAJ retail margin-FX turnover of &yen;13,757tn in CY2025 (46 reporting members, read 2026-08-17) at GMO Financial Holdings&#39; own published capture (&yen;24.09bn of OTC-FX net sales on the &yen;3,045tn it reports as a 21.7% domestic share) is $727M. GMO&#39;s stated share reproduces to 21.685% against the FFAJ series it was computed from. The rest is three disclosed FX lines: StoneX $281.7M (10-K, FY to 2025-09-30), Swissquote CHF 91.1M (Annual Report 2025), XTB PLN 290.4m (Current Report 2/2026). <b>Four bases are summed and they are not identical</b>: StoneX&#39;s line includes gold, oil and index CFDs by the filer&#39;s own statement, Swissquote&#39;s absorbed a shift into precious metals, and XTB&#39;s currency class contains crypto CFDs. Each overstates FX for that firm while the pool understates the market by everything unpublished. IG, Plus500 and CMC publish no FX split at all.", compS:"live-at-scale", comp:"<b>LIVE AT SCALE.</b> Ostium runs EUR/USD, GBP/USD and USD/JPY perps with EUR/USD among its largest contracts by OI: $183.4M total OI, &gt;95% in real-world assets, $46B+ cumulative. CFD houses have run rolling FX for decades. Hyperliquid's 232 instruments include SPX but no FX.", st:"live", n:"FX perps &mdash; for currency-trading retail", eng:"beach", th:"Projection", shape:"cell",
+ pm:373975, pmL:"<b>33 OPEN forex events, 373,975 cumulative</b>. USD/KRW 135,854, EUR/USD 89,181, GBP/USD 60,129, USD/JPY 48,476. Closed: 100 events, 395,485. <b>The daily form works too</b>: EUR/USD Up-or-Down did 68,252 and USD/JPY 58,689 on 29 Jan. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",
+ exact:0, exactL:"no FX instrument among the 52 perps",
+ rev:null, revL:"NOT SOURCED as revenue. The nearest analogue is CFD-broker FX revenue, ~$2.8B — a retail industry running rolling FX, which is a perpetual in all but name.",
+ native:"<b>US retail forex customer funds total $471,013,047</b>, every US FCM and RFED combined, as of 2026-05-31: GAIN Capital $201.6M, OANDA $135.7M, Schwab Futures and Forex $54.7M, tastyfx $48.9M, Interactive Brokers $27.2M, Trading.com $2.9M. CFTC Selected FCM Financial Data, filed 2026-07-01. <b>The entire US retail FX market holds under half a billion dollars of customer money across six dealers.</b> That is client capital, not revenue, and it is the audience this row proposes to serve.", nativeB:"customer funds",
+ wall:"solvable", wallT:"Nothing mechanical. FX is the EASIEST perp to run: 24/5, deepest continuous reference price on earth, easier to anchor than gold.",
+ ev:"both", evT:"Both halves evidenced. PM's own FX book is 33 open markets at $374K, and the daily form has cleared five figures repeatedly. <b>And the form is proven at a competitor: Ostium runs EUR/USD, GBP/USD and USD/JPY perps, with EUR/USD among its largest contracts by open interest.</b>",
+ pop:"Retail already trading PM's FX ladders, plus the CFD-broker population PM doesn't reach today",
+ test:"List EUR/USD offshore beside the existing 52. No regulatory process for that leg.", now:true,
+ bridge:"PM's own FX book is live and real: 33 open markets. Assumed: ladder and daily-binary traders would prefer a continuous linear payoff, and that some of the CFD-native population is reachable. The CFD acquisition channel is a regulated-broker route PM doesn't operate in, which is the honest gap.",
+ note:"<b>COMPETITOR CHECK. The strongest evidence on this row.</b> <b>Ostium</b> (Arbitrum RWA perp DEX, $27M from General Catalyst, Jump, Coinbase Ventures, Wintermute, GSR, Susquehanna) runs 44 pairs including EUR/USD, GBP/USD and USD/JPY perps. <b>$183.4M open interest</b>, roughly 5.8x Polymarket&#39;s entire perp venue at $31.6M, with <b>&gt;95% of that OI in real-world assets</b>, and gold, silver, EUR/USD, copper and Nasdaq as its top contracts. $46B+ cumulative volume. FX perps are not a white space: they are a specialist competitor&#39;s flagship. <i>Risk flag: CoinGecko currently displays a security-issue notice on Ostium; noted, and it does not bear on the demand evidence.</i>"},
+
+{id:"P6",gd:"up",gr:"+8.0%/yr, at records",grL:"CME agricultural complex ADV 1,362k/day (FY2021) &rarr; 1,853k/day (FY2025) = +8.0%/yr, a record; off the 2022 trough of 1,289k it is +12.9%/yr. CME FY2025 10-K. Corn and soybeans are at records and wheat is recovering but still below 2018. Read the shape, not the rate: the whole series is a set of weather-and-trade-policy cycles rather than a trend.",gpd:"none",gp:"Not buildable: the subject does not exist on PM today. Searching the full event set for wheat, corn or soybean price markets returns nothing; the only match is a NASCAR race named Iowa Corn 350.",gf:"",gt:"growing on CME and at records, but no PM series exists to corroborate it", vol:9690000000000, volL:"corn 557k + wheat 240k + soy 387k ADV &times; 251, each crop priced separately at 5,000 bu per contract (CBOT spec)", volB:"notional", rev2:420500000, rev2L:"297.2M contracts &times; $1.4151 ag RPC. ADV from the CME 10-K FY2025 ag table; RPC derived volume-weighted from the four quarters CME publishes in its 8-K exh. 99.1 (2026-02-04); CME prints no annual RPC.", compS:"withdrawn", comp:"<b>TRIED AND WITHDRAWN, with zero trades.</b> <span class=\"mono\">xyz:CORN</span>, <span class=\"mono\">xyz:WHEAT</span>, <span class=\"mono\">vntl:WHEAT</span>, <span class=\"mono\">vntl:SOY</span> were all listed on crypto rails and <b>recorded no trades at all</b> before delisting. Kalshi certified a grains series and never launched it. Grains trade for retail only as CFDs.", st:"live", n:"Grain perps &mdash; for commodity retail", eng:"beach", th:"Projection", shape:"cell",
+ pm:15474, pmL:"PM ran wheat threshold markets in spring 2022 (the Ukraine grain shock) and took 15,474, 9,133 and 2,705. Nothing since. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",
+ exact:0, exactL:"no grains instrument among the 52 perps",
+ rev:null, revL:"DERIVABLE from CME product-level data; not pulled in this run.",
+ native:"1.9M contracts/day CME agricultural, FY2025", nativeB:"contracts/day",
+ wall:"hard", wallT:"The CFTC's 24/7 advisory names agricultural products as possibly LESS suited to around-the-clock trading. Not a prohibition.",
+ ev:"one", evT:"The 2022 test ran on a far smaller Polymarket: before the election cycle, before the sports book, before the trading culture that now absorbs long-tail markets. A falsifier that fired against a venue a fraction of today's size is weaker evidence than it looked.",
+ pop:"Commodity-curious retail, the same population now trading PM's gas and oil ladders monthly",
+ test:"Re-run the 2022 test on today's venue. The comparison is the point, and it is cheap.", now:true,
+ bridge:"CME ag volume is professional flow. Assumed: retail appetite for agricultural prices scales with venue size and trading culture rather than being absent, which the 2022 result cannot distinguish, because the venue was too small to tell.",
+ note:"A cheap retest: the only prior evidence is four years stale and was run at a fraction of the venue's current scale."},
+
+{id:"LL",gd:"up",gr:"+62.9%/yr, decelerating",grL:"Growing fast and decelerating, and most of the growth is structural expansion rather than demand. US commercial sports betting REVENUE $0.909bn (2019) &rarr; $16.96bn (2025) = +62.9%/yr, sportsbook GGR, commercial operators, calendar year, American Gaming Association Commercial Gaming Revenue Tracker. Most of that rate is states legalising, not existing bettors betting more. SCOPE, UNRESOLVED: the AGA tracker is commercial gaming only and tribal is reported separately by the NIGC. Florida&rsquo;s market is tribal and among the largest in the country, and whether it sits inside the $16.96bn could not be verified against an explicit AGA scope statement. Treat the exclusion as an inference before quoting this as the US market.",gpd:"none",gp:"The form does not exist on PM, so there is no in-play series to build (confirmed against the full event set, no continuously-repricing in-play product on any subject). The closest evidence is the SPX daily, where per-market volume is at its second-highest ever: when PM lists fewer, better-placed high-frequency markets, per-market volume holds; when it lists more, as it did in FX, it collapses.",gf:"None published for US commercial sports betting revenue from a named forecaster with a dated attributable figure, and NONE PUBLISHED for in-play share from any forecaster on any basis. The one adjacent named forward figure is Eilers &amp; Krejcik Gaming: a mature US sports prediction market could produce $200&ndash;400bn in annual trading VOLUME, a different market on a different basis, and not comparable to the $166.94bn handle. IN-PLAY SHARE HAS NO COMMON TREND: Spain 70.3% &rarr; 49.9% falling, Betsson 67.6% &rarr; 58.2% falling, France 38% &rarr; 48% rising, Kindred flat. There is no industry trajectory to cite.",gt:"growing fast but decelerating, and mostly structural; in-play share has no common trend in any direction", vol:null, volL:"No regulator publishes an in-play versus pre-match split. UKGC's &lsquo;real event betting&rsquo; is a product category, not an in-play distinction; reading it as one would be a scope error.", volB:"—", rev2:341492884, rev2L:"<b>Spain, and only Spain, publishes in-play GGR as a currency amount; and &ldquo;only&rdquo; is checked, not assumed.</b> Italy (ADM), Portugal (SRIJ), Sweden (Spelinspektionen) and Denmark (Spillemyndigheden) were each read at the source and none publishes the split on any basis: Italy&#39;s finest online cut is <i>Giochi a base sportiva</i>, Portugal cuts by sport and competition, Denmark by sales channel and weekday, and Sweden has no betting-only line at all; its published row is <i>Kommersiellt onlinespel (t ex n&auml;tkasino), vadh&aring;llning samt fartyg</i>, merging online casino, betting and vessel gaming into one series. Verified here against the regulator&#39;s own workbook. France&#39;s ANJ publishes a share but not a currency amount. &euro;302,210,602 for FY2025 (the DGOJ&#39;s own line item <i>Ap. Dep. de Contrap. en Directo</i> in the Spanish online gambling open-data file) at the ECB 2025 annual average of 1.12998 USD/EUR. <b>The hold discount is the whole point of this row.</b> In-play was 52.53% of Spanish online fixed-odds STAKES (&euro;5.14bn of &euro;9.79bn) but only 45.79% of GGR, because in-play hold ran 5.88% against pre-match 7.70%, a 1.31x discount. Stake share and revenue share are not the same number and the gap runs one way. <b>Spain is one of the jurisdictions Polymarket can actually serve</b>: it is absent from the 39-country blocked list in Polymarket&#39;s own help centre, which does name Italy, France, Germany, the UK, Ireland, the Netherlands, Belgium, Poland, Malta and Slovakia. So this pool is addressable in the literal sense, which is not true of most of Europe. <b>But it is a measured floor for one national market, not a US-addressable pool.</b> No US REGULATOR publishes an in-play split at any basis, across 20 state regulators plus AGA and NIGC. The one US disclosure that exists is Flutter&#39;s qualitative &ldquo;live betting represents over half of handle&rdquo; for FanDuel (8-K EX-99.1, 2025-08-07 and 2025-11-12): operator-specific, handle-basis, and a threshold rather than a value, so it cannot size a GGR pool.", compS:"live-at-scale", comp:"<b>POLYMARKET ALREADY SHIPS THIS.</b> polymarket.com/sports/live runs continuous in-play across 20+ sports with an embedded stream; combo/parlay shipped 2026-06-10. On the price side, five-minute BTC ladders clear six figures each: &ldquo;Bitcoin Up or Down, 9:50&ndash;9:55PM ET&rdquo; did <b>638,615 contracts</b>. Kalshi does <b>$31B monthly notional, ~85% sports</b>, $100B+ lifetime. Sporttrade is a licensed price ladder in NJ since 2022. Limitless uses duration as its taxonomy: 5min, 15min, 30min, minutely.", st:"live", n:"Live in-play ladders &mdash; for entertainment-seeking retail", eng:"acq", th:"Generated", shape:"cell",
+ pm:421635, pmL:"PM has PRE-MATCH micro props (first-touchdown-scorer 421,635, Euro first-goal-scorer 10,963) but <b>no continuously-repricing in-play product at all</b>. <b>Figures are CONTRACTS</b>. Polymarket publishes no cash figure.",
+ exact:0, exactL:"no live/in-play ladder exists on any subject",
+ rev:null, revL:"NO POOL as such — this is a FORM that multiplies across subjects PM already holds, not a new subject with its own market.",
+ native:"<b>Kindred is the only operator anywhere that publishes the in-play GGR share AND the live and pre-game holds separately</b>, which makes this row&#39;s mechanism checkable on a second, fully independent book. Live share of GGR 45.1% (FY2020) &rarr; 49.7% (Q3 2024); live share of STAKES 54.8% &rarr; 54.5% over the same periods. <b>In every one of the seven periods the stakes share exceeds the GGR share by 5&ndash;10pp</b>, purely from the hold difference: pre-match hold &divide; in-play hold ran 1.47x, 1.34x, 1.28x, 1.15x, 1.21x. Spain&#39;s 1.31x sits inside that band. <b>A defect in Kindred&#39;s own printed table:</b> its FY2023 live (10.6%) and pre-game (14.1%) margins are duplicates of its Q2 2023 values. Recomputing from the four quarters gives 10.42% and 12.03%, and only those reconcile to Kindred&#39;s own published FY2023 stakes of &pound;4,409.7m and its 11.2% blended margin. Disclosure stopped after the interim report of 2024-10-25, the last standalone Kindred report before FDJ&#39;s takeover completed.", nativeB:"in-play share, two bases",
+ wall:"hard", wallT:"Latency, resolution and rightsholder data for sport. For PRICE ladders (FX, crypto, index) none of that applies: the reference price is already continuous and public.",
+ ev:"inferred", evT:"A form, not a subject. The evidence is that PM&#39;s most-traded shapes are the most entertaining ones, and continuous repricing is strictly more entertaining than a dated strike. <b>The revenue mechanism is now evidenced twice:</b> Spain on a regulator&#39;s books and Kindred on an operator&#39;s, both showing in-play taking a larger share of stakes than of revenue. <b>What is still not evidenced is the direction</b>: Betsson&#39;s in-play turnover share fell from 70.6% (FY2017) to 55.2% (Q2 2026) while France rose from 38% to 48%. There is no industry trajectory to cite.",
+ pop:"Entertainment-seeking retail: the acquisition chamber, reached through a form rather than a new subject",
+ test:"One price ladder on a subject PM already runs (FX or BTC), repricing live, against the dated equivalent.", now:true,
+ bridge:"Gambling is speculating on an outcome you have no exposure to, so the binding constraint is entertainment rather than demand. Assumed: continuous repricing raises engagement enough to lift volume on subjects PM already lists. Testable on existing subjects at near-zero incremental risk.",
+ note:"<b>The one genuinely new FORM in this set.</b> Everything else is a new subject in a form PM already runs. Applies to any price-level binary, and explicitly NOT to corporate treasury hedging, where entertainment is irrelevant. <b>Four look-alike figures were checked and rejected:</b> Ontario&#39;s only &ldquo;live&rdquo; string is <i>live and computer-based table games</i>, which is live-dealer casino; the UKGC phrase <i>real event betting</i> does not appear in its statistics workbook at all (the distinction it names is Virtual versus real events, a product taxonomy rather than a timing one, with pre-match and in-play football both landing in Football); FDJ&#39;s <i>No live betting</i> is a French retail product specification; and Entain mentions in-play only in prose."}
+
+];
+</script>
+<div class="body">
+
+<p class="cap" id="cap"></p>
+
+<div class="ctl">
+  <div class="bar">
+    <button class="tg" id="ftog" aria-expanded="false" aria-controls="pan">Filters</button>
+    <span class="slab">Ranked by</span>
+    <span class="sortw"><select id="sort" aria-label="Rank the table by">
+      <option value="rev2">Revenue we could earn</option>
+      <option value="vol">Volume traded elsewhere</option>
+      <option value="pm">Already traded on Polymarket</option>
+      <option value="exact">Already traded &middot; this exact product</option>
+      <option value="comp">Least competition first</option>
+      <option value="grow">Growing first</option>
+      <option value="ev">Strength of evidence</option>
+      <option value="wall">Easiest to reach first</option>
+      <option value="now">Testable now first</option>
+    </select></span>
+    <p class="cnt" id="cnt"></p>
+  </div>
+  <p class="key" id="key"></p>
+  <div class="g head">
+    <span class="hmet">Product &mdash; who it is for</span>
+    <span class="hpm" id="hpm"></span>
+    <span class="hfig" id="hfig"></span>
+    <span class="ruler" id="ruler"></span>
+  </div>
+</div>
+
+<div class="pan" id="pan">
+    <div class="grp"><span class="lab">Engine</span>
+      <button class="f acq" data-f="eng" data-v="acq">acquisition</button>
+      <button class="f beach" data-f="eng" data-v="beach">opener</button>
+      <button class="f mass" data-f="eng" data-v="inst">scale</button></div>
+    <div class="grp"><span class="lab">Move</span>
+      <button class="f" data-f="shape" data-v="cell">new cell</button>
+      <button class="f" data-f="shape" data-v="seg">new segment</button>
+      <button class="f" data-f="shape" data-v="behind">in it &amp; behind</button></div>
+    <div class="grp"><span class="lab">Growth</span>
+      <button class="f gwf" data-f="gd" data-v="up">growing</button>
+      <button class="f gwf" data-f="gd" data-v="flat">flat</button>
+      <button class="f gwf" data-f="gd" data-v="down">shrinking</button>
+      <button class="f gwf" data-f="gd" data-v="broken">broken or dead</button></div>
+    <div class="grp"><span class="lab">Wall</span>
+      <button class="f" data-f="wall" data-v="solvable">solvable</button>
+      <button class="f" data-f="wall" data-v="hard">hard</button>
+      <button class="f" data-f="wall" data-v="structural">structural</button></div>
+    <div class="grp"><span class="lab">Test</span>
+      <button class="f" data-f="now" data-v="1">testable now</button></div>
+    <div class="grp"><button class="f" id="clear">clear all filters</button></div>
+  </div>
+
+<div id="list"></div>
+</div>
+
+<footer>
+<p><b>Polymarket's own volume is stated in CONTRACTS, not dollars, and that is a correction to how this page read before.</b> Every volume field the Gamma API exposes (<span class="mono">volume</span>, <span class="mono">volumeNum</span>, <span class="mono">volumeClob</span>, <span class="mono">volume1yr</span>) returns the same number, and that number is the sum of contract size. Gamma publishes no cash figure at all. Cash traded is size &times; price and runs materially lower: measured trade-by-trade across sampled markets it is 1.26x to 2.68x below the contract count, and the multiple depends on where each market traded, so no single conversion recovers it. A binary contract pays $1, so the contract count is the maximum possible payout rather than the money that changed hands. It stays sortable because it's the same basis in every row.</p>
+<p><b>Three money quantities can be sorted here and they are not interchangeable.</b> Traded volume carries a different basis row by row: notional, face notional, handle, limit placed. Each is named beside its figure, never summed and never treated as like-for-like. Addressable revenue is money an operator keeps, and is the one quantity that compares cleanly across rows. Outside signals stay in their own native units inside each row and are never ordered against each other.</p>
+<p><b>Volume and revenue rank these rows almost oppositely, and that is the most useful thing on this page.</b> Exchange take on notional is a fraction of a basis point while betting margin is single-digit percent, so a $2,419T market and a $3.32B market can return similar money. A reader who sorts one way and not the other reaches the opposite conclusion.</p>
+<p><b>Addressable revenue</b> is what an operator would actually earn: GGR for betting, takeout for pari-mutuel, fees for exchanges. Every conversion is shown inside the row with its operands: multiplier, price, day count. Where one is missing, the row names what's missing rather than estimating it.</p>
+<p>One exact-product figure is stated as <b>notional</b> rather than cash traded; the row marks it where the figure is explained.</p>
+<p><b>One venue held the variable still.</b> It listed copper, natural gas, corn, wheat, TTF gas and H100 compute at the same time, to the same users, on the same rails. Copper and gas now trade $10.4M and $7.4M a day; corn, wheat, TTF and H100 recorded zero trades and were delisted. Venue constant, demand isolated.</p>
+<p><b>Growth is the live direction, not the longest available CAGR.</b> Several rows grow on a multi-year rate and shrink in the year now running; the chip states the live direction and the opened row carries both, with the window and basis named. Where a series contradicts itself, as M&amp;A does with value at a record while deal count falls three years running, it's marked broken rather than given a rate.</p>
+<p><b>The direction of Polymarket's own volume is shown separately, because on most rows it disagrees with the underlying.</b> Read the disagreement before the rate. One case inverts on inspection: PM's SPX daily volume fell 95% from its February peak, but the market count went 28 to 1 over the same window and volume per market rose to its second-highest level ever. That's a listing decision, not demand decay.</p>
+<p><b>Expected growth is only shown where a named forecaster publishes one.</b> Six rows have none and say so. Nothing here was extrapolated into a forecast, and where the only forward figure is a government policy target rather than a projection, the row says which.</p>
+<p><b>Five rows are priced with a CME rate-per-contract, and that rate is derived rather than printed.</b> CME publishes RPC by product line quarterly, in its 8-K exhibit, and never annually; each figure here is the volume-weighted annual across those four quarters. The weighting reproduces CME's own FY2025 totals to within $0.3M on $4.9B, which is what licenses it. Two limits ride on every one of them: a line-wide rate applied to a single product inside the line is an approximation, since micros and member volume price below the line average and options above; and micro contracts are growing fast enough to move it, with Micro WTI up 209% year on year in Q2 2026 at a hundredth the contract size.</p>
+<p><b>No capture rate is applied anywhere.</b> That judgment is per row, and it belongs to the reader.</p>
+<p>Roughly 46 further candidates were generated and rejected; they're recorded in the research document rather than shown here.</p>
+</footer>
+</div>
+<script>
+var EN={acq:["acquisition","acq"],beach:["opener","beach"],inst:["scale","mass"]};
+var WS={solvable:["sol","solvable"],hard:["hd2","hard"],structural:["str","structural"]};
+var SH={cell:"new cell",seg:"new segment",behind:"in it &amp; behind"};
+var EV={both:["both halves sourced",3],one:["one half sourced",2],inferred:["inferred only",1]};
+/* Growth direction is the LIVE direction, the most recent complete comparison the
+   sources support, not the longest CAGR available. Several rows grow on a multi-year
+   rate and shrink in the year now running; the live year is the one that bears on a
+   decision, and the row text carries both. */
+var GD={up:["up","▲","growing",0],flat:["flt","▬","flat",1],
+ broken:["bk","◆","broken series",2],down:["dn","▼","shrinking",3],
+ dead:["dd","✕","dead",4]};
+var GP={up:["up","▲","growing"],flat:["flt","▬","flat"],
+ down:["dn","▼","shrinking"],none:["nn","—","no series"]};
+var CS={"none":["open","nobody offers it",0],"withdrawn":["dead","tried and withdrawn",1],
+ "otc-only":["half","OTC only",2],"live-small":["half","live but small",3],
+ "live-at-scale":["full","live at scale",4]};
+/* The bar draws whichever money quantity the reader is sorting by. Ordinal sorts
+   (competition, evidence, wall, testable) reorder the rows and leave the bar alone.
+   `unit` is the column header over the figure: the page never used to say on its
+   face what unit the biggest number on it was in. */
+var MET={
+ rev2:{name:"addressable revenue",unit:"$ per year",
+   lab:function(){return null;}},
+ vol:{name:"volume traded elsewhere",unit:"$ per year",
+   lab:function(x){return (x.volB&&x.volB!=="—")?x.volB:null;}},
+ pm:{name:"volume already on Polymarket",unit:"contracts",
+   lab:function(){return null;}},
+ exact:{name:"volume already on this exact product",unit:"contracts",
+   lab:function(){return null;}}};
+var METRIC="rev2";
+var F={eng:null,shape:null,gd:null,wall:null,now:null};
+var OPEN={};
+
+function L10(v){return Math.log(v)/Math.LN10;}
+/* Scale follows the metric's range, because one rule cannot serve both.
+   Revenue spans under two decades: linear, so bar length is strictly proportional to the
+   figure. Traded volume spans six and a half: linear would leave everything but FX as an
+   invisible sliver, so log, with a floor one decade below the smallest value and bars
+   starting at 2% so the smallest still shows. Which one is in force is stated on the axis
+   (a linear axis is labelled 0 / half / max) and named in the caption. */
+function axis(f){
+  var v=[]; ROWS.forEach(function(x){if(x[f]!=null&&x[f]>0)v.push(x[f]);});
+  var mn=Math.min.apply(null,v),mx=Math.max.apply(null,v),A;
+  /* Choose the scale from the BULK of the distribution, not its tails. Two
+     four-figure rows, mortgage at $5,515 and compute at $184K, span 5.8
+     decades against the top row and would force a log axis on which $273M and
+     $3.32B differ by 14% of the width. That is a 12x difference drawn as
+     almost nothing. Comparing the max to the MEDIAN instead asks the question
+     that matters, and the threshold is set to answer it directly: 1.301
+     decades is a factor of 20, so the test passes exactly when at least half
+     the bars would reach 5% of full width. Revenue passes at 0.95 and draws
+     linear, where the reader can see which is biggest. Traded volume fails at
+     2.48, one row being $2,419T while the rest would be invisible slivers, so
+     it stays log, which is what the original rule was protecting. */
+  var srt=v.slice().sort(function(a,b){return a-b;});
+  var med=srt.length%2?srt[(srt.length-1)/2]:(srt[srt.length/2-1]+srt[srt.length/2])/2;
+  if(L10(mx)-L10(med)<=1.301){
+    A={mode:'lin',hi:mx,n:v.length};
+    A.ticks=[[0,0],[50,mx/2],[100,mx]];
+    return A;}
+  var l0=Math.floor(L10(mn))-1,l1=L10(mx),mid=Math.round((l0+l1)/2);
+  if(mid<=l0)mid=l0+1; if(mid>=l1)mid=Math.floor(l1);
+  A={mode:'log',l0:l0,span:l1-l0,hi:mx,n:v.length};
+  A.ticks=[[2,Math.pow(10,l0)],[bpos(A,Math.pow(10,mid)),Math.pow(10,mid)],[100,mx]];
+  return A;}
+function bpos(A,v){if(v==null||v<=0)return null;var p;
+  if(A.mode==='lin')p=v/A.hi*100;
+  else p=2+(L10(v)-A.l0)/A.span*98;
+  return p<0?0:(p>100?100:p);}
+
+/* Three significant figures, with thousands separators past 1,000 of a unit so that
+   2.419e15 reads as $2,419T rather than as an unreadable run of digits. */
+function sig(n){return n>=1000?Math.round(n).toLocaleString("en-US")
+  :n>=100?n.toFixed(0):n>=10?n.toFixed(1):n.toFixed(2);}
+function tick(v){return v===0?(isCt(METRIC)?"0":"$0")
+  :fmt(METRIC,v).replace(/\.0+([A-Z])/,"$1");}
+function cts(v){if(v==null)return null; if(v===0)return "0";
+  if(v>=1e9)return sig(v/1e9)+"B";
+  if(v>=1e6)return sig(v/1e6)+"M";
+  if(v>=1e3)return sig(v/1e3)+"K";
+  return ""+v;}
+/* pm and exact are contract counts; everything else is money. */
+function isCt(f){return f==="pm"||f==="exact";}
+function fmt(f,v){return isCt(f)?cts(v):money(v);}
+function money(v){if(v==null)return null; if(v===0)return "$0";
+  if(v>=1e12)return "$"+sig(v/1e12)+"T";
+  if(v>=1e9)return "$"+sig(v/1e9)+"B";
+  if(v>=1e6)return "$"+sig(v/1e6)+"M";
+  if(v>=1e3)return "$"+sig(v/1e3)+"K";
+  return "$"+v;}
+
+/* Name is frozen text. Split at its own em dash so product and audience get a hierarchy;
+   every character is preserved, including the dash. */
+function nm(s){var i=s.indexOf('&mdash;');
+  if(i<0)return '<b>'+s+'</b>';
+  return '<b>'+s.slice(0,i).trim()+'</b> <span><i class="ad">&rarr;</i>'+
+    s.slice(i+7).trim()+'</span>';}
+
+function cs(x){return CS[x.compS]||["half","",3];}
+
+/* A figure whose own lineage says notional is not cash traded and is marked as such. */
+function isAlt(x){return /notional/i.test(x.exactL||'');}
+
+/* null and 0 are different claims and are drawn differently: null was never sourced and
+   says so in words; 0 is a measured zero and draws no bar, with $0 printed beside it. */
+function bar(x,A){
+  var v=x[METRIC],wc=WS[x.wall][0],w=(v==null)?null:(v<=0?0:bpos(A,v));
+  if(w!==null&&w>0&&w<0.4)w=0.4;
+  var lab=MET[METRIC].name+" "+(v==null?"not sourced":fmt(METRIC,v))+
+    (A.mode==='log'?", log scale":"")+". "+x.wall+" wall"+(x.now?", testable now":"")+".";
+  var s='<span class="c-bar" role="img" aria-label="'+lab+'">';
+  if(w===null)s+='<span class="ns">not sourced</span>';
+  else{
+    if(w>0)s+='<i class="dbar '+wc+'" style="width:'+w.toFixed(2)+'%"></i>';
+    if(x.now)s+='<i class="tn '+wc+'" style="left:'+w.toFixed(2)+'%"></i>';}
+  return s+'</span>';}
+
+function blk(label,q,body){
+  return '<div class="blk"><span class="lead">'+label+q+'</span>'+body+'</div>';}
+
+function read(fig,lab,txt,alt){
+  return '<p><span class="rl"><span class="rg'+(fig?'':' n')+'">'+(fig||'&mdash;')+'</span>'+
+    '<span class="rt">'+lab+'</span>'+(alt?'<span class="rt bs">notional</span>':'')+'</span>'+txt+'</p>';}
+
+/* The PM volume column. Its header is written once in the sticky head rather than
+   three times per row, which is what the label column used to cost. */
+function pmcell(x,pm,ex){
+  if(METRIC==='pm')return '<span class="'+(x.exact?'':'z')+'">'+ex+'</span>';
+  if(METRIC==='exact')return '<span>'+pm+'</span>';
+  return '<span>'+pm+'</span><em>&middot;</em><span class="'+(x.exact?'':'z')+'">'+ex+'</span>';}
+/* Named for a reader who has never seen this table. The two figures are what
+   Polymarket trades on the SUBJECT and on the EXACT product proposed, and the
+   gap between them is the point of the pair. */
+function pmhead(){
+  if(METRIC==='pm')return 'on Polymarket<i>this product</i>';
+  if(METRIC==='exact')return 'on Polymarket<i>the subject</i>';
+  return 'on Polymarket<i>subject &middot; product</i>';}
+
+function render(){
+  var r=ROWS.filter(function(x){
+    if(F.eng&&x.eng!==F.eng)return false;
+    if(F.shape&&x.shape!==F.shape)return false;
+    if(F.gd&&!(x.gd===F.gd||(F.gd==="broken"&&x.gd==="dead")))return false;
+    if(F.wall&&x.wall!==F.wall)return false;
+    if(F.now&&!x.now)return false;return true;});
+  var s=document.getElementById('sort').value;
+  r.sort(function(a,b){
+    if(s==='pm')return b.pm-a.pm;
+    if(s==='exact')return b.exact-a.exact;
+    if(s==='rev2')return (b.rev2||-1)-(a.rev2||-1)||b.pm-a.pm;
+    if(s==='vol')return (b.vol||-1)-(a.vol||-1)||b.pm-a.pm;
+    if(s==='grow')return GD[a.gd][3]-GD[b.gd][3]||b.pm-a.pm;
+    if(s==='ev')return EV[b.ev][1]-EV[a.ev][1]||b.pm-a.pm;
+    if(s==='wall'){var o={solvable:0,hard:1,structural:2};return o[a.wall]-o[b.wall]||b.pm-a.pm;}
+    if(s==='now')return (b.now?1:0)-(a.now?1:0)||b.pm-a.pm;
+    if(s==='comp')return cs(a)[2]-cs(b)[2]||b.pm-a.pm;
+    return 0;});
+
+  if(MET[s])METRIC=s;
+  var A=axis(METRIC),M=MET[METRIC];
+  document.getElementById('hfig').innerHTML=M.unit;
+  document.getElementById('hpm').innerHTML=pmhead();
+  document.getElementById('ruler').innerHTML=
+    A.ticks.map(function(t,i){
+      return '<i class="at" style="left:'+t[0].toFixed(2)+'%"></i>'+
+        '<span class="tk'+(i===0?' l0':(i===A.ticks.length-1?' lN':''))+
+        '" style="left:'+t[0].toFixed(2)+'%">'+tick(t[1])+'</span>';}).join('');
+  /* One string, two mounts: the key inside the sticky head at width, the same
+     sentence at the foot of the ranking on a phone, where a four-line legend
+     between the reader and the first row costs more than it explains. The scale
+     rides here because it is a fact about bar LENGTH, and length is what this
+     paragraph is about; the title line above states only what is ranked. */
+  var key='<b>Bar length</b> is the figure the table is ranked by'+
+    (A.mode==='log'?' <i>&middot; log scale, so a bar twice as long is far more than twice the figure</i>':'')+
+    '. <b>Colour</b> is the wall, meaning how hard the row is to reach. '+
+    'No bar means the figure isn&rsquo;t sourced, and the row says why. '+
+    'A stroke past the end of a bar marks a row that is <b>testable now</b>. '+
+    'Tap any row for its evidence.';
+  document.getElementById('key').innerHTML=key;
+  document.getElementById('cap').innerHTML=key;
+
+  var nf=0,k; for(k in F){if(F[k])nf++;}
+  var tg=document.getElementById('ftog');
+  tg.textContent=nf?('Filters · '+nf):'Filters';
+  tg.classList.toggle('act',nf>0);
+  document.getElementById('cnt').innerHTML='<b>'+r.length+'</b> of '+ROWS.length+
+    ' <span class="cw">candidates</span>';
+
+  /* The gridlines descend from the axis ticks through every row, in the same grid
+     template the rows use. The heavy one is the origin every bar starts from. */
+  var gl='<div class="g glines" aria-hidden="true"><span class="gl"><i class="o" style="left:0"></i>'+
+    A.ticks.map(function(t,i){return (i===0&&t[0]<6)?'':
+      '<i style="left:'+t[0].toFixed(2)+'%"></i>';}).join('')+
+    '</span></div>';
+
+  document.getElementById('list').innerHTML=gl+r.map(function(x,i){
+    var pm=cts(x.pm),ex=cts(x.exact),rv=money(x.rev2),vl=money(x.vol),alt=isAlt(x),op=!!OPEN[x.id];
+    var c=cs(x),cm=c[0],cph=c[1];
+    var mv=fmt(METRIC,x[METRIC]),bl=M.lab(x);
+    return '<div class="r'+(op?' op':'')+'">'+
+      '<button class="hd" data-i="'+x.id+'" aria-expanded="'+(op?'true':'false')+'" aria-controls="d'+x.id+'">'+
+      '<span class="g">'+
+      '<span class="c-rk">'+String(i+1).padStart(2,'0')+'</span>'+
+      '<span class="c-nm">'+nm(x.n)+'</span>'+
+      '<span class="c-pm">'+pmcell(x,pm,ex)+'</span>'+
+      '<span class="c-fig'+(mv?'':' n')+'">'+(mv||'&mdash;')+(bl?'<u>'+bl+'</u>':'')+'</span>'+
+      bar(x,A)+
+
+      '<span class="c-meta">'+
+      '<span class="mlead">'+
+      '<span class="mi w '+WS[x.wall][0]+'">'+x.wall+' wall</span>'+
+      '<span class="mi gw '+GD[x.gd][0]+'" title="subject is '+GD[x.gd][2]+'">'+
+        '<i class="gy">'+GD[x.gd][1]+'</i>'+x.gr+'</span>'+
+      '<span class="mi cp '+cm+'">'+cph+'</span>'+
+      '<span class="mi gp '+GP[x.gpd][0]+'" title="Polymarket&#39;s own volume on this subject: '+GP[x.gpd][2]+'">'+
+        (x.gpd==='none'?'no pm volume':'pm volume <i class="gy">'+GP[x.gpd][1]+'</i>')+'</span>'+
+      '</span>'+
+      '<span class="tax">'+SH[x.shape]+' &middot; <b class="en '+EN[x.eng][1]+'">'+EN[x.eng][0]+'</b></span>'+
+      '</span>'+
+      '</span></button>'+
+
+      '<div class="det'+(op?' open':'')+'" id="d'+x.id+'">'+
+      blk('Who it reaches','','<span class="bd">'+x.pop+'</span>')+
+      blk('Competition','<span class="q cp '+cm+'">'+cph+'</span>','<span class="bd">'+x.comp+'</span>')+
+      blk('The figures','','<div class="bd reads">'+
+        read(pm?pm+'<span class="unit"> contracts</span>':null,'PM &middot; subject',x.pmL,false)+
+        read(ex?ex+'<span class="unit"> contracts</span>':null,'PM &middot; exact',x.exactL,alt)+
+        read(vl?vl+'<span class="unit">/yr</span>':null,'Traded volume'+((x.volB&&x.volB!=='—')?' · '+x.volB:''),x.volL,false)+
+        read(rv?rv+'<span class="unit">/yr</span>':null,'Addressable revenue',x.rev2L,false)+
+      '</div>')+
+      blk('Outside signal','<span class="q">'+x.nativeB+'</span>','<span class="bd">'+x.native+'</span>')+
+      blk('Growth','<span class="q '+GD[x.gd][0]+'">'+GD[x.gd][2]+'</span>',
+        '<div class="bd"><p class="tx">'+x.gt+'</p><div class="reads">'+
+        read('<span class="gg '+GD[x.gd][0]+'">'+GD[x.gd][1]+' '+x.gr+'</span>','Observed',x.grL,false)+
+        read('<span class="gg '+GP[x.gpd][0]+'">'+(x.gpd==='none'?'no series':GP[x.gpd][1]+' '+GP[x.gpd][2])+'</span>','PM&#39;s own volume',x.gp,false)+
+        read(null,'Expected',x.gf||'<b>None published.</b> No named forecaster publishes a forward figure on this subject, and none was extrapolated here.',false)+
+        '</div></div>')+
+      blk('Wall','<span class="q w '+WS[x.wall][0]+'">'+x.wall+'</span>','<span class="bd">'+x.wallT+'</span>')+
+      blk('Evidence','<span class="q">'+EV[x.ev][0]+'</span>','<span class="bd">'+x.evT+'</span>')+
+      blk('Test',x.now?'<span class="q nn">testable now</span>':'','<span class="bd">'+x.test+'</span>')+
+      blk('The assumption','','<p class="bq">'+x.bridge+'</p>')+
+      blk('Note','','<p class="nt">'+x.note+'</p>')+
+      '</div></div>';}).join('');
+}
+
+document.getElementById('list').addEventListener('click',function(e){
+  var b=e.target.closest?e.target.closest('.hd'):null; if(!b)return;
+  var id=b.dataset.i,o=!OPEN[id];
+  OPEN[id]=o;
+  document.getElementById('d'+id).classList.toggle('open',o);
+  b.parentNode.classList.toggle('op',o);
+  b.setAttribute('aria-expanded',o?'true':'false');});
+
+document.querySelectorAll('.f[data-f]').forEach(function(b){
+  b.addEventListener('click',function(){
+    var k=b.dataset.f,v=b.dataset.v,on=F[k]===v; F[k]=on?null:v;
+    document.querySelectorAll('.f[data-f="'+k+'"]').forEach(function(o){o.classList.remove('on');});
+    if(!on)b.classList.add('on'); render();});});
+document.getElementById('sort').addEventListener('change',render);
+document.getElementById('clear').addEventListener('click',function(){
+  F={eng:null,shape:null,gd:null,wall:null,now:null};
+  document.querySelectorAll('.f[data-f]').forEach(function(o){o.classList.remove('on');});
+  document.getElementById('sort').value='rev2'; render();});
+
+/* The panel is a drawer below 1000px and a rail above it. It opens closed at every
+   width: the ranking is what the reader came for, and five rows of chunky filter
+   chips used to push the first row off the screen. Above 1000px the CSS puts the
+   same element in the left rail, where it is always visible and the toggle is hidden. */
+var pan=document.getElementById('pan'),ftog=document.getElementById('ftog');
+function setPan(o){pan.classList.toggle('open',o);ftog.setAttribute('aria-expanded',o?'true':'false');}
+ftog.addEventListener('click',function(){setPan(!pan.classList.contains('open'));});
+setPan(false);
+
+
+render();
+</script>
